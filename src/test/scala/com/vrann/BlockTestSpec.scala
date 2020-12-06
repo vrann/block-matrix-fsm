@@ -45,9 +45,7 @@ class BlockTestSpec extends AnyWordSpec with BeforeAndAfterAll with Matchers {
 //      val block = testKit.spawn(interceptedBehavior)
 //      block ! MatrixDataAvailable(Position(0, 0), new File("tmp/path"), 1)
 
-      val testKit = BehaviorTestKit(
-        Block(Position(0, 0), CholeskyRoleBehavior(Position(0, 0)))
-      )
+      val testKit = BehaviorTestKit(CholeskyRoleBehavior(Position(0, 0), new TopicsRegistry[Message]).apply)
       val inbox = TestInbox[BlockMessage]()
       testKit.run(MatrixDataAvailable(Position(0, 0), new File("tmp/path"), 1))
       testKit.run(GetState(Position(0, 0), inbox.ref))
@@ -55,18 +53,14 @@ class BlockTestSpec extends AnyWordSpec with BeforeAndAfterAll with Matchers {
     }
 
     "must change state after Matrix data became available" in {
-      val testKit = BehaviorTestKit(
-        Block(Position(0, 0), CholeskyRoleBehavior(Position(0, 0)))
-      )
+      val testKit = BehaviorTestKit(CholeskyRoleBehavior(Position(0, 0), new TopicsRegistry[Message]).apply)
       testKit.run(MatrixDataAvailable(Position(0, 0), new File("tmp/path"), 1))
       val inbox = TestInbox[BlockMessage]()
       testKit.run(GetState(Position(0, 0), inbox.ref))
       inbox.expectMessage(StateMessage(Position(0, 0), Initialized))
     }
     "must not change state if Matrix data is not received" in {
-      val testKit = BehaviorTestKit(
-        Block(Position(0, 0), CholeskyRoleBehavior(Position(0, 0)))
-      )
+      val testKit = BehaviorTestKit(CholeskyRoleBehavior(Position(0, 0), new TopicsRegistry[Message]).apply)
       val inbox = TestInbox[BlockMessage]()
       testKit.run(GetState(Position(0, 0), inbox.ref))
       inbox.expectMessage(StateMessage(Position(0, 0), Uninitialized))

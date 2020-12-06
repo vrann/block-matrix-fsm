@@ -1,5 +1,7 @@
 package com.vrann
 
+import akka.actor.typed.Behavior
+
 trait RoleBehavior {
-  def apply(state: State, blockMessage: BlockMessage): BlockBehavior
+  def apply: Behavior[BlockMessage]
 }

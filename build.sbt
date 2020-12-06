@@ -2,7 +2,7 @@ name := "BlockMatrixFSM"
 
 version := "0.1"
 
-scalaVersion := "2.12.7"
+scalaVersion := "2.12.11"
 
 val akkaVersion = "2.6.9"
 val prometheusVersion = "0.8.0"
@@ -42,8 +42,10 @@ val `block-matrix-fsm` = project
          "com.typesafe.akka" %% "akka-cluster-sharding" % akkaVersion,
          "com.typesafe.akka" %% "akka-http-spray-json" % akkaHttpVersion,
          "com.typesafe.akka" %% "akka-actor-testkit-typed" % akkaVersion % Test,
-         "org.scalatest" %% "scalatest" % "3.1.1" % Test
-
+         "org.scalatest" %% "scalatest" % "3.1.1" % Test,
+         "com.github.fommil.netlib" % "all" % "1.1.2",
+         "org.apache.spark" %% "spark-mllib" % "2.4.4",
+         "org.apache.spark" %% "spark-mllib-local" % "2.4.4"
        ),
        fork in run := true,
        Global / cancelable := false, // ctrl-c

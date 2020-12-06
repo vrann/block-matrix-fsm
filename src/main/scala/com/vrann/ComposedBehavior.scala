@@ -1,53 +1,46 @@
 package com.vrann
 
-import akka.actor.typed.{Behavior, BehaviorInterceptor, TypedActorContext}
+import akka.actor.typed.pubsub.Topic
+import akka.actor.typed.pubsub.Topic.Command
+import akka.actor.typed.{ActorRef, Behavior, BehaviorInterceptor, TypedActorContext}
 import akka.actor.typed.scaladsl.Behaviors
+import akka.actor.typed.scaladsl.Behaviors.{receiveMessage, same, unhandled}
+import com.vrann.BlockMessage.{AijData, GetState, L11Ready, StateMessage}
 
 import scala.annotation.tailrec
 
-class ComposedBehavior(behaviors: Vector[BlockBehavior]) extends BlockBehavior {
+//https://github.com/akka/akka/blob/master/akka-actor-typed-tests/src/test/scala/akka/actor/typed/OrElseSpec.scala
 
-  private val behaviorsVector: Vector[BlockBehavior] = behaviors
+class ComposedBehavior(behaviors: Vector[Behavior[BlockMessage]])
+    extends BehaviorInterceptor[BlockMessage, BlockMessage] {
 
-  override def ::(that: BlockBehavior): BlockBehavior = {
-    new ComposedBehavior(behaviorsVector :+ that)
-  }
-
-//  override def apply(state: State,
-//                     blockMessage: BlockMessage): Behavior[BlockMessage] = {}
-
-  // this could be provided as a general purpose utility
-//  def handle(state: State,
-//             message: BlockMessage,
-//             behaviorsList: Vector[BlockBehavior]): Behavior[BlockMessage] = {
-//    PartialFunction
-//    behaviorsList match {
-//      case Nil          => Behaviors.unhandled
-//      case head :: tail => head.applyOrElse(state, message, handle(_, tail))
-//    }
+//  val composableDefaultCaseHandlers = receiveMessage[BlockMessage] {
+//    case GetState(Position(0, 0), replyTo) =>
+//      replyTo ! StateMessage(Position(0, 0), stateTransition)
+//      same
+//    case _ =>
+//      println("Completely unhandled")
+//      unhandled
 //  }
 
-  override def aroundReceive(
-    ctx: TypedActorContext[BlockMessage],
-    msg: BlockMessage,
-    target: BehaviorInterceptor.ReceiveTarget[BlockMessage]
-  ): Behavior[BlockMessage] = {
+  var composableBehaviors = behaviors //:: composableDefaultCaseHandlers
+
+  override def aroundReceive(ctx: TypedActorContext[BlockMessage],
+                             msg: BlockMessage,
+                             target: BehaviorInterceptor.ReceiveTarget[BlockMessage]): Behavior[BlockMessage] = {
 
     @tailrec def handle(i: Int): Behavior[BlockMessage] = {
-      if (i == behaviorsVector.size)
+      if (i == composableBehaviors.size)
         target(ctx, msg)
       else {
         val next =
-          Behavior.interpretMessage(behaviorsVector(i).apply, ctx, msg)
+          Behavior.interpretMessage(composableBehaviors(i), ctx, msg)
         if (Behavior.isUnhandled(next))
           handle(i + 1)
         else if (!Behavior.isAlive(next))
           next
         else {
-          behaviorsVector = behaviorsVector.updated(
-            i,
-            Behavior.canonicalize(next, behaviorsVector(i).apply, ctx)
-          )
+          composableBehaviors = composableBehaviors.updated(i, Behavior.canonicalize(next, composableBehaviors(i), ctx))
           Behaviors.same
         }
       }
@@ -55,7 +48,20 @@ class ComposedBehavior(behaviors: Vector[BlockBehavior]) extends BlockBehavior {
 
     handle(0)
   }
-
-//  Behaviors.receiveMessage(command => handle(command, pingHandlers))
-
 }
+
+//class composition(blockBehaviors: Vector[BlockBehavior]) extends BlockBehavior {
+//
+//  var topics = blockBehaviors.foldLeft(Map.empty[String, Behavior[Command[Message]]])((map, blockBehavior) =>
+//    map ++ blockBehavior.topics)
+//
+//  override def ::(that: BlockBehavior): composition = {
+//    topics = topics ++ that.topics
+//    new composition(blockBehaviors :+ that)
+//  }
+//
+//  override def apply: Behavior[BlockMessage] = {
+//    val behaviors = blockBehaviors.map(behavior => behavior.apply)
+//    Behaviors.intercept[BlockMessage, BlockMessage](() => new ComposedBehavior(behaviors))(Behaviors.empty)
+//  }
+//}
