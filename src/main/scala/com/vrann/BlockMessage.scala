@@ -17,6 +17,8 @@ object BlockMessage extends Message {
   final case class DataReady(pos: Position, blockMatrixType: BlockMatrixType, filePath: File)
       extends BlockMessage(pos = pos)
 
+  final case class AllL21Applied(pos: Position) extends BlockMessage(pos = pos)
+
   /*
    * Data should be available locally to the actor in order to process it. Semantic of the message should allow to verify
    * that the data is on the same node as an actor itself. Therefore we have Section ID as a part of the signature along wioth

@@ -26,7 +26,7 @@ class FileTransferTest extends AnyWordSpec with BeforeAndAfterAll with Matchers 
   "FileTransfer" must {
     "must accept FileTransferReadyMessage message" in {
       val testKit =
-        BehaviorTestKit(FileTransfer(new TestFileLocator(), List(Position(0, 0)), new TopicsRegistry[Message]).apply)
+        BehaviorTestKit(FileTransfer(new TestFileLocator(), List(Position(0, 0)), new TopicsRegistry[Message], 1).apply)
       val inbox = TestInbox[FileTransferMessage]()
       testKit.run(FileTransferReadyMessage(Position(0, 0), L11, 1, "l11.mtrx", inbox.ref))
       inbox.expectMessage(FileTransferRequestMessage(Position(0, 0), L11, 1, "l11.mtrx", testKit.ref))
@@ -37,11 +37,11 @@ class FileTransferTest extends AnyWordSpec with BeforeAndAfterAll with Matchers 
       val testKit = ActorTestKit()
       val root =
         testKit.spawn(
-          vrann.FileTransfer(new TestFileLocator(), List(Position(0, 0)), new TopicsRegistry[Message]).apply,
+          vrann.FileTransfer(new TestFileLocator(), List(Position(0, 0)), new TopicsRegistry[Message], 1).apply,
           "default")
       val root2 =
         testKit.spawn(
-          vrann.FileTransfer(new TestFileLocator(), List(Position(0, 0)), new TopicsRegistry[Message]).apply,
+          vrann.FileTransfer(new TestFileLocator(), List(Position(0, 0)), new TopicsRegistry[Message], 1).apply,
           "default2")
       val message =
         FileTransferReadyMessage(Position(0, 0), L11, 1, "l11.mtrx", root2)
@@ -54,11 +54,11 @@ class FileTransferTest extends AnyWordSpec with BeforeAndAfterAll with Matchers 
       //      implicit val system: ActorSystem[Nothing] = testKit
       val root =
         testKit.spawn(
-          vrann.FileTransfer(new TestFileLocator(), List(Position(0, 0)), new TopicsRegistry[Message]).apply,
+          vrann.FileTransfer(new TestFileLocator(), List(Position(0, 0)), new TopicsRegistry[Message], 1).apply,
           "default")
       val root2 =
         testKit.spawn(
-          vrann.FileTransfer(new TestFileLocator(), List(Position(0, 0)), new TopicsRegistry[Message]).apply,
+          vrann.FileTransfer(new TestFileLocator(), List(Position(0, 0)), new TopicsRegistry[Message], 1).apply,
           "default2")
       val fileName = "l11.mtrx"
       implicit val system: ActorSystem[Nothing] = testKit.system

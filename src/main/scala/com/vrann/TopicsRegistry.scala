@@ -16,5 +16,7 @@ class TopicsRegistry[T] {
   def apply(topicName: String, position: Position): ActorRef[Command[T]] =
     topics.get(s"$topicName-$position")
 
+  def hasTopic(topicName: String): Boolean = topics.containsKey(topicName)
+
   def registered: Map[String, ActorRef[Command[T]]] = topics.asScala.toMap
 }

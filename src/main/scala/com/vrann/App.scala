@@ -58,6 +58,9 @@ object RootBehavior {
 //        topics.transferReadyTopic ! Publish(
 //          FileTransferReadyMessage(Position(0, 0), L11, 1, "l11.mtrx", fileTransferActor2))
 //        same
+        case message =>
+          sectionActor ! message
+          same
       }
   }
 }
@@ -65,7 +68,7 @@ object RootBehavior {
 object App {
   def main(args: Array[String]): Unit = {
     val system: ActorRef[Message] =
-      ActorSystem(RootBehavior.behavior(new Section(List(Position(0, 0)), new TopicsRegistry[Message])), "example")
+      ActorSystem(RootBehavior.behavior(new Section(List(Position(0, 0)), new TopicsRegistry[Message], 1)), "example")
     Thread.sleep(500)
     system ! TestMessage
   }

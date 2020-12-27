@@ -69,7 +69,10 @@ class FileLocatorDefault extends FileLocator {
 
 object FileTransferTopicRegistry extends TopicsRegistry[FileTransferMessage]
 
-case class FileTransfer(fileLocator: FileLocator, positions: List[Position], topicsRegistry: TopicsRegistry[Message]) {
+case class FileTransfer(fileLocator: FileLocator,
+                        positions: List[Position],
+                        topicsRegistry: TopicsRegistry[Message],
+                        sectionId: Int) {
 
   private val topicPatterns = List("data-ready")
 
@@ -89,7 +92,7 @@ case class FileTransfer(fileLocator: FileLocator, positions: List[Position], top
         .info(
           s"message FileTransferReady $matrixType received for position $position in section $sectionId in ${context.self}")
 
-      if (!ref.equals(context.self)) {
+      if (!sectionId.equals(this.sectionId)) {
         val fileTransferRequest = FileTransferRequestMessage(position, matrixType, sectionId, fileName, context.self)
         context.log.info(s"FileTransferRequestMessage: $position, $matrixType")
         ref ! fileTransferRequest

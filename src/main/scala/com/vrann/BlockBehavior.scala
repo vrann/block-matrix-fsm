@@ -7,7 +7,7 @@ object BlockTopicRegistry extends TopicsRegistry[BlockMessage]
 
 abstract class BlockBehavior {
 
-  var topics: Map[String, Behavior[Command[Message]]]
+  val topics: Map[String, Behavior[Command[Message]]]
 
 //  def ::(that: BlockBehavior): BlockBehavior = {
 //    new composition(Vector(this, that))

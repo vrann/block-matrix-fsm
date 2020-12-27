@@ -16,6 +16,10 @@ case object Initialized extends State
 case object L11Received extends State
 case object A11Processed extends State
 case object L21Processed extends State
+case object SomeL21Applied extends State
+case object L21Applied extends State
+case object AllL21Applied extends State
+case object Done extends State
 
 object Block {
 

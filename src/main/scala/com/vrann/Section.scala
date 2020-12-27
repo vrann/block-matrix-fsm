@@ -10,21 +10,29 @@ import akka.actor.typed.{ActorRef, Behavior, DispatcherSelector}
 import com.vrann.BlockMessage.{AijData, DataReady, GetState}
 import com.vrann.cholesky.CholeskyBlockMatrixType.L11
 import com.vrann.cholesky.CholeskyRoleBehavior
+case class InitData(position: Position, blockMatrixType: BlockMatrixType, sectionId: Int, filePath: File)
+    extends Message
 
 class Section(val positions: List[Position],
               topicsRegistry: TopicsRegistry[Message] = new TopicsRegistry[Message],
+              val sectionId: Int,
               fileLocator: FileLocator = new FileLocatorDefault) {
 
   var blockTopics = Map.empty[String, Behavior[Command[Message]]]
 
-  val choleskyRoleBehaviors: Map[Position, CholeskyRoleBehavior] =
-    positions.foldLeft(Map.empty[Position, CholeskyRoleBehavior])((map, position) => {
-      val cholesky = CholeskyRoleBehavior(position, topicsRegistry)
+  val name = positions.foldLeft("section-") { (a, b) =>
+    a + b
+  }
+
+  val choleskyRoleBehaviors: Map[Position, BlockBehavior] =
+    positions.foldLeft(Map.empty[Position, BlockBehavior])((map, position) => {
+      val cholesky = CholeskyRoleBehavior(position, topicsRegistry).roleBehavior
+      println(s"$position => ${cholesky.topics}")
       blockTopics ++= cholesky.topics
       map + (position -> cholesky)
     })
 
-  val fileTransfer: FileTransfer = FileTransfer(fileLocator, positions, topicsRegistry)
+  val fileTransfer: FileTransfer = FileTransfer(fileLocator, positions, topicsRegistry, sectionId)
   val fileTransferTopics: Map[String, Behavior[Command[Message]]] = fileTransfer.topics
 
   val behavior: Behavior[Message] = setup[Message] { context: ActorContext[Message] =>
@@ -36,7 +44,9 @@ class Section(val positions: List[Position],
       //val props = DispatcherSelector.fromConfig(dispatcherPath)
       blockTopics.foreach({
         case (topicName, topicBehavior) => {
-          topicsRegistry + (topicName, context.spawn(topicBehavior, topicName))
+          if (!topicsRegistry.hasTopic(topicName)) {
+            topicsRegistry + (topicName, context.spawn(topicBehavior, topicName))
+          }
         }
       })
       fileTransferTopics.foreach({
@@ -88,20 +98,31 @@ class Section(val positions: List[Position],
 //          fileTransferActor ! message.asInstanceOf[FileTransferMessage]
 //          same
 //        }
-        case message @ DataReady(pos: Position, blockMatrixType: BlockMatrixType, filePath: File) => {
-          if (!positionedActors.contains(pos)) {
-            val topicName = s"data-ready-$pos"
-            var topic = topicsRegistry(topicName)
-            if (topicsRegistry(topicName) == null) {
-              topic = context.spawn(Topic[Message](topicName), topicName)
-              topicsRegistry + (topicName, topic)
-            }
-            topic ! Publish(FileTransferReadyMessage(pos, blockMatrixType, 1, filePath.toString, context.self))
+//        case message @ DataReady(pos: Position, blockMatrixType: BlockMatrixType, filePath: File) => {
+//          if (!positionedActors.contains(pos)) {
+//            val topicName = s"data-ready-$pos"
+//            var topic = topicsRegistry(topicName)
+//            if (topicsRegistry(topicName) == null) {
+//              topic = context.spawn(Topic[Message](topicName), topicName)
+//              topicsRegistry + (topicName, topic)
+//            }
+//            topic ! Publish(FileTransferReadyMessage(pos, blockMatrixType, 1, filePath.toString, context.self))
+//          } else {
+//            positionedActors(pos) ! AijData(pos, filePath, sectionId = 1)
+//          }
+//          same
+//        }
+        case _ @InitData(position, blockMatrixType, sectionId, filePath) =>
+          if (positions.contains(position)) {
+            context.log.debug(s"Publishing DataReady to matrix-$blockMatrixType-ready-$position")
+            topicsRegistry(s"matrix-$blockMatrixType-ready-$position") ! Publish(
+              DataReady(position, blockMatrixType, filePath))
           } else {
-            positionedActors(pos) ! AijData(pos, filePath, sectionId = 1)
+            context.log.debug(s"Publishing FileTransferReadyMessage to data-ready-$position")
+            topicsRegistry(s"data-ready-$position") ! Publish(
+              FileTransferReadyMessage(position, blockMatrixType, sectionId, filePath.toString, context.self))
           }
           same
-        }
         case message @ FileTransferRequestMessage(_, _, _, _, _) => {
           fileTransferActor ! message.asInstanceOf[FileTransferRequestMessage]
           same

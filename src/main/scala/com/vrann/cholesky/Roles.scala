@@ -4,6 +4,8 @@ import com.vrann.{BlockRole, Position}
 
 object Test extends BlockRole {}
 
+object Subdiagonal extends BlockRole {}
+
 object Roles {
   def apply(pos: Position): BlockRole = {
     if (pos.x < 0) Test

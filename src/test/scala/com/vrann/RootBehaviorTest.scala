@@ -12,7 +12,9 @@ class RootBehaviorTest extends AnyWordSpec with BeforeAndAfterAll with Matchers 
     "must be received by subscribers" in {
       val testKit = ActorTestKit()
       val root =
-        testKit.spawn(RootBehavior.behavior(new Section(List(Position(0, 0)), new TopicsRegistry[Message])), "default")
+        testKit.spawn(
+          RootBehavior.behavior(new Section(List(Position(0, 0)), new TopicsRegistry[Message], 1)),
+          "default")
       val message =
         FileTransferReadyMessage(Position(0, 0), L11, 1, "test", root)
       val probe = testKit.createTestProbe[FileTransferMessage]()
