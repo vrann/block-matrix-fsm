@@ -1,0 +1,11 @@
+{{- if ne .Values.docker.registry.server "" }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Release.Name }}-private-registry.auth
+  labels:
+{{ include "actormatrix.labels" . | indent 4 }}
+type: kubernetes.io/dockerconfigjson
+data:
+  .dockerconfigjson: {{ template "actormatrix.dockerRegistrySecret" . }}
+{{- end }}

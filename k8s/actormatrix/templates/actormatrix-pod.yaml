@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    labels:
+        app: {{ include "actormatrix.fullname" }}
+{{ include "actormatrix.labels" . | indent 4 }}
+    name: {{ include "actormatrix.fullname" }}
+    namespace: {{ .Values.actormatrix.namespace }}
+spec:
+    replicas: {{ .Values.actormatrix.replicaCount }}
+    selector:
+        matchLabels:
+            app: {{ include "actormatrix.fullname" }}
+    template:
+        metadata:
+            labels:
+                app: {{ include "actormatrix.fullname" }}
+        spec:
+            containers:
+                - name: actormatrix
+                  image: {{ .Values.actormatrix.image.repository }}:{{ .Values.actormatrix.image.tag }}
+                  imagePullPolicy: {{ .Values.actormatrix.image.pullPolicy }}
+                  resources:
+                    limits:
+                      cpu: 2
+                      memory: 4096Mi
+                    requests:
+                      cpu: 2
+                      memory: 4096Mi
+                  ports:
+                      - name: remoting
+                        containerPort: {{ .Values.actormatrix.akkaPort }}
+                        protocol: TCP
+                      - name: management
+                        containerPort: {{ .Values.actormatrix.managementPort }}
+                        protocol: TCP
+                      - name: web
+                        containerPort: {{ .Values.actormatrix.httpPort }}
+                        protocol: TCP
+                      - name: kamon
+                        containerPort: {{ .Values.actormatrix.kamonPort }}
+                        protocol: TCP
+                      - name: kamonsp
+                        containerPort: {{ .Values.actormatrix.kamonStatusPagePort }}
+                        protocol: TCP
+                      - name: jmxremote
+                        containerPort: 1099
+                        protocol: TCP
+                  env:
+                    # The Kubernetes API discovery will use this service name to look for
+                    # nodes with this value in the 'app' label.
+                    # This can be customized with the 'pod-label-selector' setting.
+                    - name: AKKA_CLUSTER_BOOTSTRAP_SERVICE_NAME
+                      valueFrom:
+                          fieldRef:
+                              apiVersion: v1
+                              fieldPath: "metadata.labels['app']"
+                    - name: MY_NODE_NAME
+                      valueFrom:
+                        fieldRef:
+                            fieldPath: spec.nodeName
+                    - name: MY_POD_NAME
+                      valueFrom:
+                          fieldRef:
+                              fieldPath: metadata.name
+                    - name: MY_POD_NAMESPACE
+                      valueFrom:
+                          fieldRef:
+                              fieldPath: metadata.namespace
+                    - name: MY_POD_IP
+                      valueFrom:
+                          fieldRef:
+                              fieldPath: status.podIP
+                    - name: MY_POD_SERVICE_ACCOUNT
+                      valueFrom:
+                          fieldRef:
+                              fieldPath: spec.serviceAccountName
+                    - name: MANAGEMENT_PORT
+                      value: {{ .Values.actormatrix.managementPort | quote}}
+                    - name: WEB_PORT
+                      value: {{ .Values.actormatrix.httpPort | quote}}
+                    - name: AKKA_PORT
+                      value: {{ .Values.actormatrix.akkaPort | quote}}
+                    - name: KAMON_PORT
+                      value: {{ .Values.actormatrix.kamonPort | quote}}
+                    - name: KAMON_STATUS_PAGE
+                      value: {{ .Values.actormatrix.kamonStatusPagePort | quote}}
+                    - name: KAMON_API_KEY
+                      value: {{ .Values.actormatrix.kamonApiKey | quote}}
+            imagePullSecrets:
+              - name: {{ .Release.Name }}-private-registry.auth

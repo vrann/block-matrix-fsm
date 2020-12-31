@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Service
+metadata:
+    name: {{ include "actormatrix.fullname" }}
+    labels:
+        app: {{ include "actormatrix.fullname" }}
+{{ include "actormatrix.labels" . | indent 4 }}
+    namespace: {{ .Values.actormatrix.namespace }}
+spec:
+    ports:
+        - name: remoting
+          port: {{ .Values.actormatrix.akkaPort }}
+        - name: management
+          port: {{ .Values.actormatrix.managementPort }}
+        - name: web
+          port: {{ .Values.actormatrix.httpPort }}
+        - name: kamon
+          port: {{ .Values.actormatrix.kamonPort }}
+        - name: kamonsp
+          port: {{ .Values.actormatrix.kamonStatusPagePort }}
+        - name: jmxremote
+          port: 1099
+    selector:
+        app: {{ include "actormatrix.fullname" }}
