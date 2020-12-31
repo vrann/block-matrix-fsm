@@ -2,7 +2,7 @@ FROM openjdk:11.0.8-jdk
 
 RUN apt-get update && apt-get install curl -y
 
-COPY ./target/scala-2.12/actormatrix-assembly-*.jar /application.jar
+COPY ./target/scala-2.12/ActorMatrix-assembly-*.jar /application.jar
 
 ENV WEB_PORT 8080
 ENV MY_POD_NAMESPACE default

@@ -8,6 +8,20 @@ val akkaVersion = "2.6.9"
 val prometheusVersion = "0.8.0"
 val akkaHttpVersion = "10.2.0"
 
+assemblyMergeStrategy in assembly := {
+  case PathList("jackson-annotations-2.10.3.jar", xs @ _*)            => MergeStrategy.last
+  case PathList("jackson-core-2.10.3.jar", xs @ _*)                   => MergeStrategy.last
+  case PathList("jackson-databind-2.10.3.jar", xs @ _*)               => MergeStrategy.last
+  case PathList("jackson-dataformat-cbor-2.10.3.jar", xs @ _*)        => MergeStrategy.last
+  case PathList("jackson-datatype-jdk8-2.10.3.jar", xs @ _*)          => MergeStrategy.last
+  case PathList("jackson-datatype-jsr310-2.10.3.jar", xs @ _*)        => MergeStrategy.last
+  case PathList("jackson-module-parameter-names-2.10.3.jar", xs @ _*) => MergeStrategy.last
+  case PathList("jackson-module-paranamer-2.10.3.jar", xs @ _*)       => MergeStrategy.last
+  case PathList("META-INF", "MANIFEST.MF")                            => MergeStrategy.discard
+  case PathList("reference.conf")                                     => MergeStrategy.concat
+  case _                                                              => MergeStrategy.first
+}
+
 val `actormatrix` = project
   .in(file("."))
   .settings(
