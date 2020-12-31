@@ -2,3 +2,6 @@
 target
 .bsp
 project
+.terraform
+.terraform.*
+terraform.*
