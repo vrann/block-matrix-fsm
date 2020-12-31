@@ -1,0 +1,43 @@
+#
+# Create a role, `pod-reader`, that can list pods and
+# bind the default service account in the namespace
+# that the binding is deployed to to that role.
+#
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+    name: {{ .Release.Name }}-actormatrix
+    namespace: {{ .Values.actormatrix.namespace }}
+    labels:
+{{ include "actormatrix.labels" . | indent 4 }}
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+    name: {{ .Release.Name }}-actormatrix
+    namespace: {{ .Values.actormatrix.namespace }}
+    labels:
+{{ include "actormatrix.labels" . | indent 4 }}
+rules:
+    - apiGroups: [""] # "" indicates the core API group
+      resources: ["pods"]
+      verbs: ["get", "watch", "list"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+    name: {{ .Release.Name }}-read-pods
+    namespace: {{ .Values.actormatrix.namespace }}
+    labels:
+{{ include "actormatrix.labels" . | indent 4 }}
+subjects:
+    # Uses the default service account.
+    # Consider creating a dedicated service account to run your
+    # Akka Cluster services and binding the role to that one.
+    - kind: User
+      namespace: {{ .Values.actormatrix.namespace }}
+      name: {{ printf "system:serviceaccount:%s:default" .Values.actormatrix.namespace }}
+roleRef:
+    kind: Role
+    name: {{ .Release.Name }}-actormatrix
+    apiGroup: rbac.authorization.k8s.io

@@ -1,0 +1,36 @@
+docker:
+  registry:
+    server: "aws"
+    username: ""
+    password: ""
+
+k8s:
+  domain: cluster.local
+
+actormatrix:
+  replicaCount: 5
+  # can be public|corp
+  ingress: "public"
+#  namespace: default
+  namespace: "nms"
+  httpPort: 8080
+  managementPort: 8558
+  akkaPort: 2551
+  kamonPort: 9225
+  kamonStatusPagePort: 5266
+  kamonApiKey: ""
+  enablePredictions: "off"
+  mockBackends: "off"
+  mockBackendsNumber: 100
+  cpu: 1
+  image:
+    repository: aws/actormatrix
+    tag: 1.1.43
+    pullPolicy: "IfNotPresent"
+
+cluster:
+  type: "aws"
+#  type: "local"
+  primaryDomain: ""
+  region: ""
+  subDomain: ""
