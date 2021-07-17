@@ -9,7 +9,7 @@ metadata:
     name: {{ .Release.Name }}-actormatrix
     namespace: {{ .Values.actormatrix.namespace }}
     labels:
-{{ include "actormatrix.labels" . | indent 4 }}
+{{ include "actormatrix.labels" . | indent 8 }}
 ---
 kind: Role
 apiVersion: rbac.authorization.k8s.io/v1
@@ -17,7 +17,7 @@ metadata:
     name: {{ .Release.Name }}-actormatrix
     namespace: {{ .Values.actormatrix.namespace }}
     labels:
-{{ include "actormatrix.labels" . | indent 4 }}
+{{ include "actormatrix.labels" . | indent 8 }}
 rules:
     - apiGroups: [""] # "" indicates the core API group
       resources: ["pods"]
@@ -29,7 +29,7 @@ metadata:
     name: {{ .Release.Name }}-read-pods
     namespace: {{ .Values.actormatrix.namespace }}
     labels:
-{{ include "actormatrix.labels" . | indent 4 }}
+{{ include "actormatrix.labels" . | indent 8 }}
 subjects:
     # Uses the default service account.
     # Consider creating a dedicated service account to run your

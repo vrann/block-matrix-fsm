@@ -1,7 +1,6 @@
 package com.vrann
 
 import akka.actor.typed.Behavior
-import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.scaladsl.Behaviors._
 import com.vrann.BlockMessage.{GetState, MatrixDataAvailable, StateMessage}
 

@@ -35,8 +35,8 @@ Create chart name and version as used by the chart label.
 Common labels
 */}}
 {{- define "actormatrix.labels" -}}
-app.kubernetes.io/name: {{ include "v8isolate.name" . }}
-helm.sh/chart: {{ include "v8isolate.chart" . }}
+app.kubernetes.io/name: {{ include "actormatrix.name" . }}
+helm.sh/chart: {{ include "actormatrix.chart" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}

@@ -1,11 +1,7 @@
 package com.vrann
 
-import akka.actor.typed.pubsub.Topic
-import akka.actor.typed.pubsub.Topic.Command
-import akka.actor.typed.{ActorRef, Behavior, BehaviorInterceptor, TypedActorContext}
 import akka.actor.typed.scaladsl.Behaviors
-import akka.actor.typed.scaladsl.Behaviors.{receiveMessage, same, unhandled}
-import com.vrann.BlockMessage.{AijData, GetState, L11Ready, StateMessage}
+import akka.actor.typed.{Behavior, BehaviorInterceptor, TypedActorContext}
 
 import scala.annotation.tailrec
 

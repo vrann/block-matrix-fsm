@@ -1,6 +1,6 @@
-/*
 package com.vrann;
 
+import org.apache.spark.ml.linalg.DenseMatrix;
 import org.apache.spark.ml.linalg.Matrix;
 
 import java.io.DataOutputStream;
@@ -41,18 +41,18 @@ public class UnformattedMatrixWriter<T extends Matrix> {
 //                                pos.getY())
 //                ).toString()), position, matrixType);
 //    }
-
-    public static <L extends Matrix> UnformattedMatrixWriter<L> ofFileLocator(
-            FileLocator fileLocator, Position position, BlockMatrixType matrixType) throws IOException {
-        File file = fileLocator.getFile(position, matrixType);
-        return ofFile(file);
-    }
+//
+//    public static <L extends Matrix> UnformattedMatrixWriter<L> ofFileLocator(
+//            FileLocator fileLocator, Position position, BlockMatrixType matrixType) throws IOException {
+//        File file = fileLocator.getFile(position, matrixType);
+//        return ofFile(file);
+//    }
 
     private UnformattedMatrixWriter(DataOutputStream output) {
         this.output = output;
     }
 
-    public void writeMatrix(T matrix) throws IOException {
+    public void writeMatrix(DenseMatrix matrix) throws IOException {
         ByteBuffer numRows = ByteBuffer.allocate(4);
         numRows.order(ByteOrder.LITTLE_ENDIAN);
         numRows.putInt(matrix.numRows());
@@ -77,4 +77,3 @@ public class UnformattedMatrixWriter<T extends Matrix> {
 }
 
 
-*/

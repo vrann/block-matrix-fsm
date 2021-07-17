@@ -2,31 +2,31 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
     labels:
-        app: {{ include "actormatrix.fullname" }}
-{{ include "actormatrix.labels" . | indent 4 }}
-    name: {{ include "actormatrix.fullname" }}
+        app: {{ include "actormatrix.name" .}}
+{{ include "actormatrix.labels" . | indent 8 }}
+    name: {{ include "actormatrix.fullname" .}}
     namespace: {{ .Values.actormatrix.namespace }}
 spec:
     replicas: {{ .Values.actormatrix.replicaCount }}
     selector:
         matchLabels:
-            app: {{ include "actormatrix.fullname" }}
+            app: {{ include "actormatrix.name" .}}
     template:
         metadata:
             labels:
-                app: {{ include "actormatrix.fullname" }}
+                app: {{ include "actormatrix.name" .}}
         spec:
             containers:
                 - name: actormatrix
                   image: {{ .Values.actormatrix.image.repository }}:{{ .Values.actormatrix.image.tag }}
                   imagePullPolicy: {{ .Values.actormatrix.image.pullPolicy }}
-                  resources:
-                    limits:
-                      cpu: 2
-                      memory: 4096Mi
-                    requests:
-                      cpu: 2
-                      memory: 4096Mi
+#                  resources:
+#                    limits:
+#                      cpu: 2
+#                      memory: 4096Mi
+#                    requests:
+#                      cpu: 2
+#                      memory: 4096Mi
                   ports:
                       - name: remoting
                         containerPort: {{ .Values.actormatrix.akkaPort }}

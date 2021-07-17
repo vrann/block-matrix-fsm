@@ -1,107 +1,101 @@
 package com.vrann.cholesky
 
-import java.io.File
-
-import akka.actor.typed.Behavior
+import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.pubsub.Topic
 import akka.actor.typed.pubsub.Topic.{Command, Publish}
-import akka.actor.typed.scaladsl.Behaviors.{receiveMessage, same, setup, stopped, unhandled, withStash}
-import akka.actor.typed.scaladsl.LoggerOps
-import akka.actor.typed.scaladsl.StashBuffer
+import akka.actor.typed.scaladsl.Behaviors._
+import akka.actor.typed.scaladsl.{LoggerOps, StashBuffer}
+import com.github.fommil.netlib.BLAS
+import com.typesafe.config.ConfigFactory
 import com.vrann.BlockMessage.DataReady
+import com.vrann._
 import com.vrann.cholesky.CholeskyBlockMatrixType.{aMN, L11, L21}
-import com.vrann.{
-  BlockBehavior,
-  BlockMatrixType,
-  BlockRole,
-  Done,
-  Initialized,
-  L21Applied,
-  Message,
-  Position,
-  SomeL21Applied,
-  State,
-  TopicsRegistry,
-  Uninitialized
-}
+import org.apache.spark.ml.linalg.DenseMatrix
 
-class BlockSubdiagonal(position: Position, topicsRegistry: TopicsRegistry[Message]) extends BlockBehavior {
+import java.io.{DataInputStream, File, FileInputStream}
+
+class BlockSubdiagonal(position: Position,
+                       topicsRegistry: TopicsRegistry[Message],
+                       sectionId: Int,
+                       fileTransferActor: ActorRef[Message])
+    extends BlockBehavior
+    with L21Operation
+    with InitializeOperation {
 
   val matrixInterested: Map[BlockMatrixType, List[Position]] =
     Map(aMN -> List(position), L21 -> (0 until position.y).foldLeft(List.empty[Position]) { (list, y) =>
       list :+ Position(position.x, y)
     }, L11 -> List(Position(position.y, position.y)))
 
+  val publishTo: Map[BlockMatrixType, List[Position]] =
+    Map(L21 -> List(position))
+
   val topics: Map[String, Behavior[Command[Message]]] =
     matrixInterested.foldLeft(Map.empty[String, Behavior[Command[Message]]]) {
       case (map, (matrixType, listOfPositions)) => {
         map ++ listOfPositions.foldLeft(Map.empty[String, Behavior[Command[Message]]]) {
           case (topicsMap, position) => {
-            val topic = s"matrix-$matrixType-ready-$position"
+            val topic = s"matrix-${matrixType}-ready-$position"
             topicsMap + (topic -> Topic[Message](topic))
           }
         }
       }
     }
 
-//  val topics: Map[String, Behavior[Command[Message]]] =
-//    List(s"matrix-aMN-ready", s"matrix-A11-ready", s"matrix-L11-ready")
-//      .foldLeft(Map.empty[String, Behavior[Command[Message]]])((map, topicName) => {
-//        val topic = s"$topicName-$position"
-//        map + (topic -> Topic[Message](topic))
-//      }) ++ (0 until position.y).foldLeft(Map.empty[String, Behavior[Command[Message]]]) { (map, l21positionY) =>
-//      {
-//        val l21Position = Position(position.x, l21positionY)
-//        val topic = s"matrix-L21-ready-$l21Position"
-//        map + (topic -> Topic[Message](topic))
-//      }
-//    }
+  val topicsPublishTo: Map[String, Behavior[Command[Message]]] =
+    publishTo.foldLeft(Map.empty[String, Behavior[Command[Message]]]) {
+      case (map, (matrixType, listOfPositions)) => {
+        map ++ listOfPositions.foldLeft(Map.empty[String, Behavior[Command[Message]]]) {
+          case (topicsMap, position) => {
+            val topic = s"matrix-${matrixType}-ready-$position"
+            topicsMap + (topic -> Topic[Message](topic))
+          }
+        }
+      }
+    }
 
   val expectedL21: Int = matrixInterested(L21).size
 
   override def apply: Behavior[Message] = withStash(this.position.y) { buffer: StashBuffer[Message] =>
-    state(Uninitialized, List.empty[Position], buffer)
-  }
-
-  private def initialize(buffer: StashBuffer[Message]): Behavior[Message] = setup { context =>
-    context.log.debug(s"Initializing aMN at $position")
-    context.log.debug("L21 unstashing")
-    buffer.unstashAll(state(Initialized, List.empty[Position], buffer))
-    if (position.y == 0) {
-      state(L21Applied, List.empty[Position], buffer)
-    } else { state(Initialized, List.empty[Position], buffer) }
-
-  }
-
-  private def applyL21(message: DataReady,
-                       processedL21: List[Position],
-                       buffer: StashBuffer[Message]): Behavior[Message] = setup { context =>
-    context.log.debug(s"L21 from ${message.pos} applied at $position")
-    val newProcessed = processedL21 :+ message.pos
-
-    if (newProcessed.size == expectedL21) {
-      //unstash L11
-      buffer.unstashAll(state(L21Applied, processedL21, buffer))
-//      state(L21Applied, newProcessed, buffer)
-    } else {
-      state(SomeL21Applied, newProcessed, buffer)
-    }
+    state(new File(""), Uninitialized, List.empty[Position], buffer)
   }
 
   private def applyL11(message: DataReady,
                        processedL21: List[Position],
-                       buffer: StashBuffer[Message]): Behavior[Message] = setup { context =>
+                       buffer: StashBuffer[Message],
+                       filePath: File): Behavior[Message] = setup { context =>
     context.log.debug(s"L11 from ${message.pos} applied at $position")
-    context.log.debug(s"Publishing matrix-$L21-ready-$position")
-    topicsRegistry(s"matrix-$L21-ready-$position") ! Publish(DataReady(position, L21, message.filePath))
-    state(Done, processedL21, buffer)
+    val l11 = MatrixReader.readMatrix(new DataInputStream(new FileInputStream(message.filePath)))
+    val a21 = MatrixReader.readMatrix(new DataInputStream(new FileInputStream(filePath)))
+    val config = ConfigFactory.load()
+    val sectionId = config.getInt("section")
+    val filePathOut = FileLocator.getFileLocator(position, L21, sectionId)
+    context.log.debug(s"Writing to {}", filePathOut.getAbsolutePath)
+
+    val l21 = L11toL21(l11, a21)
+    val writer = UnformattedMatrixWriter.ofFile(filePathOut)
+    writer.writeMatrix(l21)
+    val messageBody = DataReady(position, L21, filePathOut.getAbsoluteFile, sectionId, fileTransferActor)
+    context.log.debug(s"Publishing {}", message)
+    topicsRegistry(s"matrix-${L21}-ready-$position") ! Publish(messageBody)
+    state(filePath, Done, processedL21, buffer)
   }
 
-  private def factorize(processedL21: List[Position], buffer: StashBuffer[Message]): Behavior[Message] = setup {
-    context =>
-      context.log.debug("factorized")
-      stopped
-    //state(Done, processedL21, buffer)
+  def L11toL21(L11: DenseMatrix, A21: DenseMatrix): DenseMatrix = {
+    val L21 = A21.toArray
+    BLAS.getInstance.dtrsm(
+      "R",
+      "L",
+      "T",
+      "N",
+      L11.numRows,
+      L11.numCols,
+      1.0,
+      L11.toArray,
+      L11.numCols,
+      L21,
+      A21.numRows)
+    new DenseMatrix(A21.numRows, A21.numCols, L21)
   }
 
   /**
@@ -130,25 +124,35 @@ class BlockSubdiagonal(position: Position, topicsRegistry: TopicsRegistry[Messag
    * @param buffer
    * @return
    */
-  private def state(stateTransition: State,
+  private def state(file: File,
+                    stateTransition: State,
                     processedL21: List[Position],
                     buffer: StashBuffer[Message]): Behavior[Message] = setup { context =>
     receiveMessage[Message] { message =>
       (stateTransition, message) match {
 
         /** 1. subdiagonal (Unitialized, b(M, N) -> Initialized */
-        case (Uninitialized, DataReady(pos, blockMatrixType, _))
+        case (Uninitialized, DataReady(pos, blockMatrixType, filePath, sectionId, ref))
             if blockMatrixType.equals(aMN) && pos.equals(position) =>
-          initialize(buffer)
+          if (sectionId != this.sectionId) {
+            context.log.debug(s"Remote data $message")
+            ref ! FileTransferRequestMessage(pos, blockMatrixType, fileTransferActor)
+            same
+          } else {
+            context.log.debug(s"Local data $message")
+            initialize(position, buffer, filePath, state)
+          }
 
         /**  2. subdiagonal: (Initialized, b(M, N) -> Initialized, skip */
-        case (Initialized, DataReady(pos, blockMatrixType, _)) if blockMatrixType.equals(aMN) && pos.equals(position) =>
+        case (Initialized, DataReady(pos, blockMatrixType, _, _, _))
+            if blockMatrixType.equals(aMN) && pos.equals(position) =>
           context.log.debug("skip initialization")
           same
-        case (L21Applied, DataReady(pos, blockMatrixType, _)) if blockMatrixType.equals(aMN) && pos.equals(position) =>
+        case (L21Applied, DataReady(pos, blockMatrixType, _, _, _))
+            if blockMatrixType.equals(aMN) && pos.equals(position) =>
           context.log.debug("skip initialization")
           same
-        case (SomeL21Applied, DataReady(pos, blockMatrixType, _))
+        case (SomeL21Applied, DataReady(pos, blockMatrixType, _, _, _))
             if blockMatrixType.equals(aMN) && pos.equals(position) =>
           context.log.debug("skip initialization")
           same
@@ -156,7 +160,7 @@ class BlockSubdiagonal(position: Position, topicsRegistry: TopicsRegistry[Messag
         /**
          * 3. (Unitialized, L21(M, N) -> Uninitialized, stash if M == M && N < N
          */
-        case (Uninitialized, message @ DataReady(pos, blockMatrixType, _))
+        case (Uninitialized, message @ DataReady(pos, blockMatrixType, _, _, _))
             if blockMatrixType.equals(L21) && matrixInterested(L21).contains(pos) =>
           context.log.debug("L21 stashed")
           buffer.stash(message)
@@ -167,15 +171,35 @@ class BlockSubdiagonal(position: Position, topicsRegistry: TopicsRegistry[Messag
          * 4. (Initialized, L21(M, N) -> SomeL21Applied, if M == M && N < N && l211Required.size > 0
          * 5. (Initialized, L21(M, N) -> L21Applied, if M == M && N < N && l211Required.size == 0
          */
-        case (Initialized, message @ DataReady(pos, blockMatrixType, filePath))
+        case (Initialized, message @ DataReady(pos, blockMatrixType, _, _, _))
             if blockMatrixType.equals(L21) && matrixInterested(L21).contains(pos) =>
-          applyL21(message, processedL21, buffer)
+          applyL21(
+            position,
+            expectedL21,
+            message,
+            processedL21,
+            buffer,
+            file,
+            topicsRegistry,
+            state,
+            sectionId,
+            fileTransferActor)
 
-        case (SomeL21Applied, message @ DataReady(pos, blockMatrixType, filePath))
+        case (SomeL21Applied, message @ DataReady(pos, blockMatrixType, _, _, _))
             if blockMatrixType.equals(L21) && matrixInterested(L21).contains(pos) =>
-          applyL21(message, processedL21, buffer)
+          applyL21(
+            position,
+            expectedL21,
+            message,
+            processedL21,
+            buffer,
+            file,
+            topicsRegistry,
+            state,
+            sectionId,
+            fileTransferActor)
 
-        case (L21Applied, DataReady(pos, blockMatrixType, _))
+        case (L21Applied, DataReady(pos, blockMatrixType, _, _, _))
             if blockMatrixType.equals(L21) && matrixInterested(L21).contains(pos) =>
           context.log.debug("skip L21")
           same
@@ -186,24 +210,28 @@ class BlockSubdiagonal(position: Position, topicsRegistry: TopicsRegistry[Messag
          * 8. (SomeL21Applied, L11(M, N) -> SomeL21Applied, stash
          * 9. (L21Applied, L11(M, N) -> Done, applyL11
          */
-        case (Uninitialized, message @ DataReady(pos, blockMatrixType, filePath))
+        case (Uninitialized, message @ DataReady(pos, blockMatrixType, filePath, _, _))
             if blockMatrixType.equals(L11) && pos.equals(Position(position.y, position.y)) =>
-          context.log.debug("L11 stashed")
+          context.log.debug(s"$message to $position")
+          context.log.debug("Uninitialized L11 stashed")
           buffer.stash(message)
           same
-        case (Initialized, message @ DataReady(pos, blockMatrixType, filePath))
+        case (Initialized, message @ DataReady(pos, blockMatrixType, filePath, _, _))
             if blockMatrixType.equals(L11) && pos.equals(Position(position.y, position.y)) =>
-          context.log.debug("L11 stashed")
+          context.log.debug(s"$message to $position")
+          context.log.debug(s"Initialized L11 stashed $position")
           buffer.stash(message)
           same
-        case (SomeL21Applied, message @ DataReady(pos, blockMatrixType, filePath))
+        case (SomeL21Applied, message @ DataReady(pos, blockMatrixType, filePath, _, _))
             if blockMatrixType.equals(L11) && pos.equals(Position(position.y, position.y)) =>
-          context.log.debug("L11 stashed")
+          context.log.debug(s"$message to $position")
+          context.log.debug("SomeL21Applied L11 stashed")
           buffer.stash(message)
           same
-        case (L21Applied, message @ DataReady(pos, blockMatrixType, filePath))
+        case (L21Applied, message @ DataReady(pos, blockMatrixType, filePath, _, _))
             if blockMatrixType.equals(L11) && pos.equals(Position(position.y, position.y)) =>
-          applyL11(message, processedL21, buffer)
+          context.log.debug(s"L21Applied applyL11 from $pos at $position")
+          applyL11(message, processedL21, buffer, file)
 
         case (Done, _) => throw new Exception("Out of order message")
         case (_, _) =>

@@ -3,7 +3,6 @@ package com.vrann
 import java.io.File
 
 import akka.actor.typed.ActorRef
-import akka.actor.typed.pubsub.Topic
 
 class BlockMessage(pos: Position) extends Message {
   val position = pos
@@ -14,7 +13,11 @@ object BlockMessage extends Message {
   def apply(pos: Position): Unit = {
     new BlockMessage(pos)
   }
-  final case class DataReady(pos: Position, blockMatrixType: BlockMatrixType, filePath: File)
+  final case class DataReady(pos: Position,
+                             blockMatrixType: BlockMatrixType,
+                             filePath: File,
+                             sectionId: Int,
+                             fileTransferActor: ActorRef[Message])
       extends BlockMessage(pos = pos)
 
   final case class AllL21Applied(pos: Position) extends BlockMessage(pos = pos)

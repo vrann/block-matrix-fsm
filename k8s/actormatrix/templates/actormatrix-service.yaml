@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-    name: {{ include "actormatrix.fullname" }}
+    name: {{ include "actormatrix.fullname" .}}
     labels:
-        app: {{ include "actormatrix.fullname" }}
-{{ include "actormatrix.labels" . | indent 4 }}
+        app: {{ include "actormatrix.name" .}}
+{{ include "actormatrix.labels" . | indent 8 }}
     namespace: {{ .Values.actormatrix.namespace }}
 spec:
     ports:
@@ -21,4 +21,4 @@ spec:
         - name: jmxremote
           port: 1099
     selector:
-        app: {{ include "actormatrix.fullname" }}
+        app: {{ include "actormatrix.name" . }}
