@@ -58,27 +58,9 @@ class BlockMatrixTypeDeserializer extends JsonDeserializer[BlockMatrixType] {
 @JsonDeserialize(using = classOf[BlockMatrixTypeDeserializer])
 trait BlockMatrixType { val jsonValue: String }
 
-trait FileLocator {
-  def apply(fileName: String): Path
-}
-
-class FileLocatorDefault extends FileLocator {
-  override def equals(obj: Any): Boolean =
-    super.equals(obj.getClass == this.getClass)
-
-  def apply(fileName: String): Path = {
-    val pathBuilder = (new StringBuilder)
-      .append(System.getProperty("user.home"))
-      .append("/.actorchoreography/")
-      .append(fileName)
-    Paths.get(pathBuilder.toString)
-  }
-}
-
 object FileTransferTopicRegistry extends TopicsRegistry[FileTransferMessage]
 
-case class FileTransfer(fileLocator: FileLocator,
-                        positions: List[Position],
+case class FileTransfer(positions: List[Position],
                         positionsRemove: List[Position],
                         topicsRegistry: TopicsRegistry[Message],
                         sectionId: Int) {
@@ -118,35 +100,8 @@ case class FileTransfer(fileLocator: FileLocator,
         ref ! fileTransferRequest
       } else {
         topicsRegistry(s"matrix-$matrixType-ready-$position") ! Publish(
-          DataReady(position, matrixType, fileLocator(fileName).toFile, sectionId, context.self))
-        /*val file = fileLocator.getMatrixBlockFilePath(message.getFileName)
-          if (!file.exists) {
-            context.log.error(
-              "File for the matrix block is not found {}",
-              file.getAbsolutePath
-            )
-            throw new IOException("File for the matrix block is not found")
-          }
-          return String.format ( "section-data-loaded-%s-%d-%d", matrixType, pos.getX, pos.getY )
-          val resultMessage = new BlockMatrixDataLoaded.Builder()
-            .setBlockMatrixType(message.getMatrixType)
-            .setFilePath(file)
-            .setPosition(message.getPosition)
-            .setSectionId(currentSectionId)
-            .build
-          context.log.info(
-            "File exists. Notification about available file is sent {}",
-            resultMessage.getTopic
-          )
-          mediator.tell(
-            new DistributedPubSubMediator.Publish(
-              resultMessage.getTopic,
-              resultMessage
-            ),
-            selfReference
-          )*/
+          DataReady(position, matrixType, FileLocator.getFileLocator(sectionId)(fileName), sectionId, context.self))
       }
-      //        handleBlockTransitions(a, Initialized)
       same
     case (context, FileTransferRequestMessage(position, matrixType, ref)) =>
       val filePath: Path = Paths.get(FileLocator.getFileLocator(position, matrixType, sectionId).getAbsolutePath)

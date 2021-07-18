@@ -15,11 +15,10 @@ import akka.management.cluster.bootstrap.ClusterBootstrap
 import akka.management.scaladsl.AkkaManagement
 import akka.util.Timeout
 import com.typesafe.config._
+import com.vrann.cholesky.FileLocator
 import com.vrann.positioned.{GetCurrentAssignment, Response}
 import spray.json.{RootJsonFormat, _}
 
-import java.io.File
-import java.nio.file.{Path, Paths}
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
 import scala.util.{Failure, Success}
@@ -50,18 +49,7 @@ object RootBehavior {
 
     val sectionId = config.getInt("section")
 
-    val getFileLocator: Integer => String => File = (a: Integer) =>
-      (fileName: String) => {
-        def foo(fileName: String): File = {
-          new File(
-            classOf[App].getClassLoader
-              .getResource(String.format("choreography/section%d", a))
-              .getPath + "/" + fileName)
-        }
-        foo(fileName)
-    }
-
-    val file = getFileLocator(sectionId)("section.conf")
+    val file = FileLocator.getFileLocator(sectionId)("section.conf")
     val sectionConfig: Config =
       ConfigFactory.parseFile(file, ConfigParseOptions.defaults.setSyntax(ConfigSyntax.CONF))
 
@@ -73,9 +61,7 @@ object RootBehavior {
     val topicRegistry = new TopicsRegistry[Message]
 
     val sectionActor =
-      context.spawn(
-        Section(cluster.selfMember.uniqueAddress.toString, positions, topicRegistry, new FileLocatorIdentity()).behavior,
-        "Section")
+      context.spawn(Section(cluster.selfMember.uniqueAddress.toString, positions, topicRegistry).behavior, "Section")
 
     val startPos = List(
       Position(0, 0),
@@ -123,20 +109,20 @@ object RootBehavior {
     }
   }
 
-  class FileLocatorTmp extends FileLocator {
-    def apply(fileName: String): Path = {
-      val pathBuilder = (new StringBuilder)
-        .append("/tmp/")
-        .append(fileName)
-      Paths.get(pathBuilder.toString)
-    }
-  }
-
-  class FileLocatorIdentity extends FileLocator {
-    def apply(fileName: String): Path = {
-      Paths.get(fileName)
-    }
-  }
+//  class FileLocatorTmp extends FileLocator {
+//    def apply(fileName: String): Path = {
+//      val pathBuilder = (new StringBuilder)
+//        .append("/tmp/")
+//        .append(fileName)
+//      Paths.get(pathBuilder.toString)
+//    }
+//  }
+//
+//  class FileLocatorIdentity extends FileLocator {
+//    def apply(fileName: String): Path = {
+//      Paths.get(fileName)
+//    }
+//  }
 }
 
 trait JsonSupport extends SprayJsonSupport with DefaultJsonProtocol {

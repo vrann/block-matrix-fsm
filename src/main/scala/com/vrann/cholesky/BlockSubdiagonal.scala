@@ -171,33 +171,45 @@ class BlockSubdiagonal(position: Position,
          * 4. (Initialized, L21(M, N) -> SomeL21Applied, if M == M && N < N && l211Required.size > 0
          * 5. (Initialized, L21(M, N) -> L21Applied, if M == M && N < N && l211Required.size == 0
          */
-        case (Initialized, message @ DataReady(pos, blockMatrixType, _, _, _))
+        case (Initialized, message @ DataReady(pos, blockMatrixType, _, sectionId, ref))
             if blockMatrixType.equals(L21) && matrixInterested(L21).contains(pos) =>
-          applyL21(
-            position,
-            expectedL21,
-            message,
-            processedL21,
-            buffer,
-            file,
-            topicsRegistry,
-            state,
-            sectionId,
-            fileTransferActor)
+          if (sectionId != this.sectionId) {
+            context.log.debug(s"Remote data $message")
+            ref ! FileTransferRequestMessage(pos, blockMatrixType, fileTransferActor)
+            same
+          } else {
+            applyL21(
+              position,
+              expectedL21,
+              message,
+              processedL21,
+              buffer,
+              file,
+              topicsRegistry,
+              state,
+              sectionId,
+              fileTransferActor)
+          }
 
-        case (SomeL21Applied, message @ DataReady(pos, blockMatrixType, _, _, _))
+        case (SomeL21Applied, message @ DataReady(pos, blockMatrixType, _, sectionId, ref))
             if blockMatrixType.equals(L21) && matrixInterested(L21).contains(pos) =>
-          applyL21(
-            position,
-            expectedL21,
-            message,
-            processedL21,
-            buffer,
-            file,
-            topicsRegistry,
-            state,
-            sectionId,
-            fileTransferActor)
+          if (sectionId != this.sectionId) {
+            context.log.debug(s"Remote data $message")
+            ref ! FileTransferRequestMessage(pos, blockMatrixType, fileTransferActor)
+            same
+          } else {
+            applyL21(
+              position,
+              expectedL21,
+              message,
+              processedL21,
+              buffer,
+              file,
+              topicsRegistry,
+              state,
+              sectionId,
+              fileTransferActor)
+          }
 
         case (L21Applied, DataReady(pos, blockMatrixType, _, _, _))
             if blockMatrixType.equals(L21) && matrixInterested(L21).contains(pos) =>
@@ -228,10 +240,16 @@ class BlockSubdiagonal(position: Position,
           context.log.debug("SomeL21Applied L11 stashed")
           buffer.stash(message)
           same
-        case (L21Applied, message @ DataReady(pos, blockMatrixType, filePath, _, _))
+        case (L21Applied, message @ DataReady(pos, blockMatrixType, _, sectionId, ref))
             if blockMatrixType.equals(L11) && pos.equals(Position(position.y, position.y)) =>
           context.log.debug(s"L21Applied applyL11 from $pos at $position")
-          applyL11(message, processedL21, buffer, file)
+          if (sectionId != this.sectionId) {
+            context.log.debug(s"Remote data $message")
+            ref ! FileTransferRequestMessage(pos, blockMatrixType, fileTransferActor)
+            same
+          } else {
+            applyL11(message, processedL21, buffer, file)
+          }
 
         case (Done, _) => throw new Exception("Out of order message")
         case (_, _) =>

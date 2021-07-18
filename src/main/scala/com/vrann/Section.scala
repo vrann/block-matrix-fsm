@@ -25,9 +25,9 @@ object Section {
   def apply(nodeName: String,
             positions: List[Position] = List.empty[Position],
             topicsRegistry: TopicsRegistry[Message] = new TopicsRegistry[Message],
-            fileLocator: FileLocator = new FileLocatorDefault): Behavior[Message] = {
+  ): Behavior[Message] = {
 
-    val fileTransfer: FileTransfer = FileTransfer(fileLocator, positions, List(), topicsRegistry, sectionId)
+    val fileTransfer: FileTransfer = FileTransfer(positions, List(), topicsRegistry, sectionId)
 
     createBehaviorForPositions(nodeName, positions, List(), topicsRegistry, fileTransfer)
   }

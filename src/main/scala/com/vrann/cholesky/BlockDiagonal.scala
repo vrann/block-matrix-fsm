@@ -136,37 +136,49 @@ class BlockDiagonal(position: Position,
          * 8. first (Initialized, L21(M, N) -> Initialized, skip (UnapplicableException)
          * 9. diagonal (Initialized, L21(M, N) -> SomeL21Applied, apply if M == M && N < N
          */
-        case (Initialized, message @ DataReady(pos, blockMatrixType, _, _, _))
+        case (Initialized, message @ DataReady(pos, blockMatrixType, _, sectionId, ref))
             if blockMatrixType.equals(L21) && matrixInterested(L21).contains(pos) =>
-          applyL21(
-            position,
-            expectedL21,
-            message,
-            processedL21,
-            buffer,
-            file,
-            topicsRegistry,
-            state,
-            sectionId,
-            fileTransferActor)
+          if (sectionId != this.sectionId) {
+            context.log.debug(s"Remote data $message")
+            ref ! FileTransferRequestMessage(pos, blockMatrixType, fileTransferActor)
+            same
+          } else {
+            applyL21(
+              position,
+              expectedL21,
+              message,
+              processedL21,
+              buffer,
+              file,
+              topicsRegistry,
+              state,
+              sectionId,
+              fileTransferActor)
+          }
 
         /**
          * 11. diagonal (SomeL21Applied, L21(M, N) -> SomeL21Applied, apply if M == M && N < N, SomeL21Applied(for all but last, reduce the list of required L21s), send message AllL21Applied t self for the last
          * 12. diagonal (Initialized, AllL21Applied -> factorize, Done
          */
-        case (SomeL21Applied, message @ DataReady(pos, blockMatrixType, _, _, _))
+        case (SomeL21Applied, message @ DataReady(pos, blockMatrixType, _, sectionId, ref))
             if blockMatrixType.equals(L21) && matrixInterested(L21).contains(pos) =>
-          applyL21(
-            position,
-            expectedL21,
-            message,
-            processedL21,
-            buffer,
-            file,
-            topicsRegistry,
-            state,
-            sectionId,
-            fileTransferActor)
+          if (sectionId != this.sectionId) {
+            context.log.debug(s"Remote data $message")
+            ref ! FileTransferRequestMessage(pos, blockMatrixType, fileTransferActor)
+            same
+          } else {
+            applyL21(
+              position,
+              expectedL21,
+              message,
+              processedL21,
+              buffer,
+              file,
+              topicsRegistry,
+              state,
+              sectionId,
+              fileTransferActor)
+          }
 
         case (Done, _) => {
           context.log.debug2("Out of order message {}, {}", message.getClass, stateTransition)
