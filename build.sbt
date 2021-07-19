@@ -4,7 +4,7 @@ name := "actormatrix"
 
 version := "0.0.1"
 
-scalaVersion := "2.12.11"
+scalaVersion := "2.12.14"
 
 val akkaVersion = "2.6.9"
 val prometheusVersion = "0.8.0"
@@ -25,6 +25,8 @@ assemblyMergeStrategy in assembly := {
   case PathList("reference.conf")                                     => MergeStrategy.concat
   case _                                                              => MergeStrategy.first
 }
+
+mainClass in assembly := Some("com.vrann.App")
 
 val `actormatrix` = project
   .in(file("."))

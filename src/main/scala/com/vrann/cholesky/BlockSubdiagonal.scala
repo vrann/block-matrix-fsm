@@ -1,18 +1,15 @@
 package com.vrann.cholesky
 
-import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.pubsub.Topic
-import akka.actor.typed.pubsub.Topic.{Command, Publish}
+import akka.actor.typed.pubsub.Topic.Command
 import akka.actor.typed.scaladsl.Behaviors._
 import akka.actor.typed.scaladsl.{LoggerOps, StashBuffer}
-import com.github.fommil.netlib.BLAS
-import com.typesafe.config.ConfigFactory
+import akka.actor.typed.{ActorRef, Behavior}
 import com.vrann.BlockMessage.DataReady
 import com.vrann._
 import com.vrann.cholesky.CholeskyBlockMatrixType.{aMN, L11, L21}
-import org.apache.spark.ml.linalg.DenseMatrix
 
-import java.io.{DataInputStream, File, FileInputStream}
+import java.io.File
 
 class BlockSubdiagonal(position: Position,
                        topicsRegistry: TopicsRegistry[Message],
@@ -20,7 +17,8 @@ class BlockSubdiagonal(position: Position,
                        fileTransferActor: ActorRef[Message])
     extends BlockBehavior
     with L21Operation
-    with InitializeOperation {
+    with InitializeOperation
+    with L11Operation {
 
   val matrixInterested: Map[BlockMatrixType, List[Position]] =
     Map(aMN -> List(position), L21 -> (0 until position.y).foldLeft(List.empty[Position]) { (list, y) =>
@@ -58,44 +56,6 @@ class BlockSubdiagonal(position: Position,
 
   override def apply: Behavior[Message] = withStash(this.position.y) { buffer: StashBuffer[Message] =>
     state(new File(""), Uninitialized, List.empty[Position], buffer)
-  }
-
-  private def applyL11(message: DataReady,
-                       processedL21: List[Position],
-                       buffer: StashBuffer[Message],
-                       filePath: File): Behavior[Message] = setup { context =>
-    context.log.debug(s"L11 from ${message.pos} applied at $position")
-    val l11 = MatrixReader.readMatrix(new DataInputStream(new FileInputStream(message.filePath)))
-    val a21 = MatrixReader.readMatrix(new DataInputStream(new FileInputStream(filePath)))
-    val config = ConfigFactory.load()
-    val sectionId = config.getInt("section")
-    val filePathOut = FileLocator.getFileLocator(position, L21, sectionId)
-    context.log.debug(s"Writing to {}", filePathOut.getAbsolutePath)
-
-    val l21 = L11toL21(l11, a21)
-    val writer = UnformattedMatrixWriter.ofFile(filePathOut)
-    writer.writeMatrix(l21)
-    val messageBody = DataReady(position, L21, filePathOut.getAbsoluteFile, sectionId, fileTransferActor)
-    context.log.debug(s"Publishing {}", message)
-    topicsRegistry(s"matrix-${L21}-ready-$position") ! Publish(messageBody)
-    state(filePath, Done, processedL21, buffer)
-  }
-
-  def L11toL21(L11: DenseMatrix, A21: DenseMatrix): DenseMatrix = {
-    val L21 = A21.toArray
-    BLAS.getInstance.dtrsm(
-      "R",
-      "L",
-      "T",
-      "N",
-      L11.numRows,
-      L11.numCols,
-      1.0,
-      L11.toArray,
-      L11.numCols,
-      L21,
-      A21.numRows)
-    new DenseMatrix(A21.numRows, A21.numCols, L21)
   }
 
   /**
@@ -199,7 +159,7 @@ class BlockSubdiagonal(position: Position,
             same
           } else {
             applyL21(
-              position,
+              position: Position,
               expectedL21,
               message,
               processedL21,
@@ -248,7 +208,7 @@ class BlockSubdiagonal(position: Position,
             ref ! FileTransferRequestMessage(pos, blockMatrixType, fileTransferActor)
             same
           } else {
-            applyL11(message, processedL21, buffer, file)
+            applyL11(position, message, processedL21, buffer, file, topicsRegistry, state, sectionId, fileTransferActor)
           }
 
         case (Done, _) => throw new Exception("Out of order message")
