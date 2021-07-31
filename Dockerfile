@@ -26,9 +26,24 @@ COPY project/assembly.sbt /app/project/assembly.sbt
 COPY project/build.properties /app/project/build.properties
 COPY docker/application.local2552.conf /app/application.local.conf
 
+
 WORKDIR /app
 RUN sbt assembly
 COPY ./target/scala-2.12/actormatrix-assembly-*.jar /app/application.jar
+
+#
+# wget http://www.netlib.org/scalapack/scalapack_installer.tgz
+# tar -zxf scalapack_installer.tgz
+# cd scalapack_installer/
+# python setup.py
+# apt-get install apt-get install libblas-dev liblapack-dev mpi lam4-dev mpich openmpi-bin
+#
+# python setup.py --mpif90=mpif90 --mpiincdir="/usr/lib/x86_64-linux-gnu/openmpi/include" --blaslib=/usr/lib/x86_64-linux-gnu/libblas.so --lapacklib=/usr/lib/x86_64-linux-gnu/liblapack.so.3
+#
+# wget http://www.netlib.org/scalapack/scalapack-2.1.0.tgz
+# youtube.com/watch?v=Z4bWRIYm9VE
+
+mpifort cholesky.f90 /usr/local/lib/libscalapack.a /usr/local/bin/libblas.a
 
 CMD java \
     -Dconfig.file=application.local.conf \

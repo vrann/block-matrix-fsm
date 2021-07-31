@@ -1,22 +1,23 @@
 package com.vrann
 
-import java.nio.file.{Path, Paths}
 import akka.actor.typed.pubsub.Topic
 import akka.actor.typed.pubsub.Topic.{Command, Publish}
 import akka.actor.typed.scaladsl.Behaviors.same
-import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
+import akka.actor.typed.scaladsl.{ActorContext, Behaviors, LoggerOps}
 import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
 import akka.stream.scaladsl.{FileIO, StreamRefs}
-import akka.stream.{SourceRef, StreamRefAttributes}
-import akka.util.ByteString
+import akka.stream.{IOResult, SourceRef, StreamRefAttributes}
+import akka.util.{ByteString, Timeout}
 import com.fasterxml.jackson.core.JsonParser
-import com.fasterxml.jackson.databind.{DeserializationContext, JsonDeserializer}
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
+import com.fasterxml.jackson.databind.{DeserializationContext, JsonDeserializer}
 import com.vrann.BlockMessage.DataReady
-import com.vrann.cholesky.CholeskyBlockMatrixType.{aMN, A11, A22, L11, L12, L21}
+import com.vrann.cholesky.CholeskyBlockMatrixType._
 import com.vrann.cholesky.FileLocator
 
+import java.nio.file.{Path, Paths}
 import scala.concurrent.duration._
+import scala.concurrent.{Await, Future}
 
 trait FileTransferMessage extends Message
 
@@ -91,12 +92,12 @@ case class FileTransfer(positions: List[Position],
   def apply: Behavior[Message] = Behaviors.receivePartial[Message] {
     case (context, FileTransferReadyMessage(position, matrixType, sectionId, fileName, ref)) =>
       context.log
-        .info(
+        .debug(
           s"message FileTransferReady $matrixType received for position $position in section $sectionId in ${context.self}")
 
       if (!sectionId.equals(this.sectionId)) {
         val fileTransferRequest = FileTransferRequestMessage(position, matrixType, context.self)
-        context.log.info(s"FileTransferRequestMessage: $position, $matrixType")
+        context.log.debug(s"FileTransferRequestMessage: $position, $matrixType")
         ref ! fileTransferRequest
       } else {
         topicsRegistry(s"matrix-$matrixType-ready-$position") ! Publish(
@@ -105,10 +106,10 @@ case class FileTransfer(positions: List[Position],
       same
     case (context, FileTransferRequestMessage(position, matrixType, ref)) =>
       val filePath: Path = Paths.get(FileLocator.getFileLocator(position, matrixType, sectionId).getAbsolutePath)
-      context.log.info(s"Received request for file $filePath in ${context.self}")
+      context.log.debug(s"Received request for file $filePath in ${context.self}")
 
       implicit val system: ActorSystem[Nothing] = context.system
-      context.log.info(s"system: $system")
+      context.log.debug(s"system: $system")
       val fileRef: SourceRef[ByteString] =
         FileIO
           .fromPath(filePath)
@@ -117,21 +118,39 @@ case class FileTransfer(positions: List[Position],
             StreamRefs
               .sourceRef()
               .addAttributes(StreamRefAttributes.subscriptionTimeout(5.minutes)))
-      context.log.info(s"File Ref: $ref")
+      context.log.debug(s"File Ref: $ref")
       val fileTransferMessage =
         FileTransferResponseMessage(position, matrixType, fileRef)
-      context.log.info(s"Sending response file $fileTransferMessage to $ref")
+      context.log.debug(s"Sending response file $fileTransferMessage to $ref")
       ref ! fileTransferMessage
       same
     case (context, message @ FileTransferResponseMessage(position, matrixType, fileRef)) =>
-      context.log.info(s"Received file $message in ${context.self}")
+      //context.log.info(s"Received file $matrixType $position")
       val filePath: Path = Paths.get(FileLocator.getFileLocator(position, matrixType, sectionId).getAbsolutePath)
-      implicit val system: ActorSystem[Nothing] = context.system
-      fileRef.runWith(FileIO.toPath(filePath))
-      context.log.info("File is written to path {}", filePath)
-      topicsRegistry(s"matrix-$matrixType-ready-$position") ! Publish(
-        DataReady(position, matrixType, filePath.toFile, sectionId, context.self))
-      same
+      if (filePath.toFile.exists()) {
+        same
+      } else {
+        filePath.toFile.createNewFile()
+        implicit val system: ActorSystem[Nothing] = context.system
+        implicit val timeout = Timeout(3600 seconds)
+
+        val future: Future[IOResult] = fileRef
+          .runWith(FileIO.toPath(filePath))
+        Await.result(future, timeout.duration)
+
+        context.log.info("File is written to path {}", filePath)
+//        val realL11 = MatrixReader.readMatrix(new DataInputStream(new FileInputStream(filePath.toFile)))
+//        context.log.debug(
+//          s"Read write ${matrixType} @ $position - $filePath: ${realL11.numCols} ${realL11.numRows} $realL11")
+        context.log.info2(
+          "Sending messages to local actors {} {}",
+          s"matrix-${matrixType}-section${sectionId}-ready-$position",
+          DataReady(position, matrixType, filePath.toFile, sectionId, context.self))
+        topicsRegistry(s"matrix-${matrixType}-section${sectionId}-ready-$position") ! Publish(
+          DataReady(position, matrixType, filePath.toFile, sectionId, context.self))
+        same
+
+      }
     case _ =>
       same
   }

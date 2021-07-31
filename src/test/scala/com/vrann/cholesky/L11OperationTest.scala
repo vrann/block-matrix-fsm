@@ -1,8 +1,9 @@
 package com.vrann.cholesky
 
+import com.vrann.Mock
 import org.apache.spark.ml.linalg.DenseMatrix
 
-class Mock extends L11Operation {}
+//class Mock extends L11Operation {}
 
 class L11OperationTest extends org.scalatest.FunSuite {
 

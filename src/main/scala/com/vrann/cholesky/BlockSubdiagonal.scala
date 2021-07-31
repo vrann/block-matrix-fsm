@@ -21,9 +21,9 @@ class BlockSubdiagonal(position: Position,
     with L11Operation {
 
   val matrixInterested: Map[BlockMatrixType, List[Position]] =
-    Map(aMN -> List(position), L21 -> (0 until position.y).foldLeft(List.empty[Position]) { (list, y) =>
-      list :+ Position(position.x, y)
-    }, L11 -> List(Position(position.y, position.y)))
+    Map(aMN -> List(position), L21 -> (0 until position.x).foldLeft(List.empty[Position]) { (list, x) =>
+      list :+ Position(x, position.y)
+    }, L11 -> List(Position(position.x, position.x)))
 
   val publishTo: Map[BlockMatrixType, List[Position]] =
     Map(L21 -> List(position))
@@ -33,8 +33,12 @@ class BlockSubdiagonal(position: Position,
       case (map, (matrixType, listOfPositions)) => {
         map ++ listOfPositions.foldLeft(Map.empty[String, Behavior[Command[Message]]]) {
           case (topicsMap, position) => {
+            var newMap = topicsMap
             val topic = s"matrix-${matrixType}-ready-$position"
-            topicsMap + (topic -> Topic[Message](topic))
+            newMap = newMap + (topic -> Topic[Message](topic))
+            val topicLocal = s"matrix-${matrixType}-section${sectionId}-ready-$position"
+            newMap = newMap + (topicLocal -> Topic[Message](topicLocal))
+            newMap
           }
         }
       }
@@ -95,26 +99,26 @@ class BlockSubdiagonal(position: Position,
         case (Uninitialized, DataReady(pos, blockMatrixType, filePath, sectionId, ref))
             if blockMatrixType.equals(aMN) && pos.equals(position) =>
           if (sectionId != this.sectionId) {
-            context.log.debug(s"Remote data $message")
+            context.log.info(s"Remote data $message")
             ref ! FileTransferRequestMessage(pos, blockMatrixType, fileTransferActor)
             same
           } else {
-            context.log.debug(s"Local data $message")
+            context.log.info(s"Local data $message")
             initialize(position, buffer, filePath, state)
           }
 
         /**  2. subdiagonal: (Initialized, b(M, N) -> Initialized, skip */
         case (Initialized, DataReady(pos, blockMatrixType, _, _, _))
             if blockMatrixType.equals(aMN) && pos.equals(position) =>
-          context.log.debug("skip initialization")
+          context.log.info("skip initialization")
           same
         case (L21Applied, DataReady(pos, blockMatrixType, _, _, _))
             if blockMatrixType.equals(aMN) && pos.equals(position) =>
-          context.log.debug("skip initialization")
+          context.log.info("skip initialization")
           same
         case (SomeL21Applied, DataReady(pos, blockMatrixType, _, _, _))
             if blockMatrixType.equals(aMN) && pos.equals(position) =>
-          context.log.debug("skip initialization")
+          context.log.info("skip initialization")
           same
 
         /**
@@ -122,7 +126,7 @@ class BlockSubdiagonal(position: Position,
          */
         case (Uninitialized, message @ DataReady(pos, blockMatrixType, _, _, _))
             if blockMatrixType.equals(L21) && matrixInterested(L21).contains(pos) =>
-          context.log.debug("L21 stashed")
+          context.log.info(s"L21 stashed at Unitialized block $position")
           buffer.stash(message)
 
           same
@@ -183,26 +187,26 @@ class BlockSubdiagonal(position: Position,
          * 9. (L21Applied, L11(M, N) -> Done, applyL11
          */
         case (Uninitialized, message @ DataReady(pos, blockMatrixType, filePath, _, _))
-            if blockMatrixType.equals(L11) && pos.equals(Position(position.y, position.y)) =>
+            if blockMatrixType.equals(L11) && pos.equals(Position(position.x, position.x)) =>
           context.log.debug(s"$message to $position")
-          context.log.debug("Uninitialized L11 stashed")
+          context.log.info(s"Uninitialized L11 stashed $message to $position")
           buffer.stash(message)
           same
         case (Initialized, message @ DataReady(pos, blockMatrixType, filePath, _, _))
-            if blockMatrixType.equals(L11) && pos.equals(Position(position.y, position.y)) =>
+            if blockMatrixType.equals(L11) && pos.equals(Position(position.x, position.x)) =>
           context.log.debug(s"$message to $position")
-          context.log.debug(s"Initialized L11 stashed $position")
+          context.log.info(s"Initialized L11 stashed $message to $position")
           buffer.stash(message)
           same
         case (SomeL21Applied, message @ DataReady(pos, blockMatrixType, filePath, _, _))
-            if blockMatrixType.equals(L11) && pos.equals(Position(position.y, position.y)) =>
+            if blockMatrixType.equals(L11) && pos.equals(Position(position.x, position.x)) =>
           context.log.debug(s"$message to $position")
-          context.log.debug("SomeL21Applied L11 stashed")
+          context.log.info(s"SomeL21Applied L11 stashed $message to $position")
           buffer.stash(message)
           same
         case (L21Applied, message @ DataReady(pos, blockMatrixType, _, sectionId, ref))
-            if blockMatrixType.equals(L11) && pos.equals(Position(position.y, position.y)) =>
-          context.log.debug(s"L21Applied applyL11 from $pos at $position")
+            if blockMatrixType.equals(L11) && pos.equals(Position(position.x, position.x)) =>
+          context.log.info(s"L21Applied applyL11 from $pos at $position")
           if (sectionId != this.sectionId) {
             context.log.debug(s"Remote data $message")
             ref ! FileTransferRequestMessage(pos, blockMatrixType, fileTransferActor)
@@ -211,9 +215,13 @@ class BlockSubdiagonal(position: Position,
             applyL11(position, message, processedL21, buffer, file, topicsRegistry, state, sectionId, fileTransferActor)
           }
 
-        case (Done, _) => throw new Exception("Out of order message")
+        case (Done, message) => {
+          context.log.info2("Out of order message {}, {}", message.getClass, stateTransition)
+          //throw new Exception("Out of order message")
+          same
+        }
         case (_, _) =>
-          context.log.debug2("Message {} to block in state {} is unhandled", message.getClass, stateTransition)
+          context.log.info("Message {} to block {} in state {} is unhandled", message, position, stateTransition)
           unhandled
       }
     }

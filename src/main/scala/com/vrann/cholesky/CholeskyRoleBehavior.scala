@@ -22,6 +22,8 @@ case class CholeskyRoleBehavior(position: Position,
   }
 
   val topics: Map[String, Behavior[Command[Message]]] = roleBehavior.topics
+  val topicsPublishTo: Map[String, Behavior[Command[Message]]] = roleBehavior.topicsPublishTo
+
 //  Map[String, Behavior[Command[Message]]] =
 //    roleBehavior.topics.foldLeft(Map.empty[String, Behavior[Command[Message]]])({
 //      case (map, (topicName, topicBehavior)) => map + (topicName -> topicBehavior)
@@ -30,5 +32,4 @@ case class CholeskyRoleBehavior(position: Position,
   override def apply: Behavior[Message] =
     roleBehavior.apply
 
-  val topicsPublishTo = roleBehavior.topicsPublishTo
 }

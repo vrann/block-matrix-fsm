@@ -1,10 +1,10 @@
 package com.vrann.cholesky
 
-import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.pubsub.Topic
 import akka.actor.typed.pubsub.Topic.Command
 import akka.actor.typed.scaladsl.Behaviors._
 import akka.actor.typed.scaladsl.{LoggerOps, StashBuffer}
+import akka.actor.typed.{ActorRef, Behavior}
 import com.vrann.BlockMessage.DataReady
 import com.vrann._
 import com.vrann.cholesky.CholeskyBlockMatrixType.{aMN, L11, L21}
@@ -20,8 +20,8 @@ class BlockDiagonal(position: Position,
     with InitializeOperation {
 
   val matrixInterested: Map[BlockMatrixType, List[Position]] =
-    Map(aMN -> List(position), L21 -> (0 until position.y).foldLeft(List.empty[Position]) { (list, y) =>
-      list :+ Position(position.x, y)
+    Map(aMN -> List(position), L21 -> (0 until position.x).foldLeft(List.empty[Position]) { (list, x) =>
+      list :+ Position(x, position.y)
     })
 
   val publishTo: Map[BlockMatrixType, List[Position]] =
@@ -32,8 +32,12 @@ class BlockDiagonal(position: Position,
       case (map, (matrixType, listOfPositions)) => {
         map ++ listOfPositions.foldLeft(Map.empty[String, Behavior[Command[Message]]]) {
           case (topicsMap, position) => {
+            var newMap = topicsMap
             val topic = s"matrix-${matrixType}-ready-$position"
-            topicsMap + (topic -> Topic[Message](topic))
+            newMap = newMap + (topic -> Topic[Message](topic))
+            val topicLocal = s"matrix-${matrixType}-section${sectionId}-ready-$position"
+            newMap = newMap + (topicLocal -> Topic[Message](topicLocal))
+            newMap
           }
         }
       }
@@ -102,7 +106,7 @@ class BlockDiagonal(position: Position,
             same
           } else {
             if (pos.equals(Position(0, 0))) {
-              context.log.debug("0-0 Done")
+              context.log.info("0-0 Done")
               factorize(position, processedL21, buffer, filePath, topicsRegistry, state, sectionId, ref)
             } else {
               initialize(position, buffer, filePath, state)
@@ -128,7 +132,7 @@ class BlockDiagonal(position: Position,
         /** 7. diagonal (Uninitialized, L21(M, N) -> Uninitialized, stash if M == M && N < N */
         case (Uninitialized, message @ DataReady(pos, blockMatrixType, _, _, _))
             if blockMatrixType.equals(L21) && matrixInterested(L21).contains(pos) =>
-          context.log.debug(s"L21 stashed at $position")
+          context.log.info(s"L21 stashed at Unitialized block $position")
           buffer.stash(message)
           same
 
@@ -181,11 +185,12 @@ class BlockDiagonal(position: Position,
           }
 
         case (Done, _) => {
-          context.log.debug2("Out of order message {}, {}", message.getClass, stateTransition)
-          throw new Exception("Out of order message")
+          context.log.info2("Out of order message {}, {}", message.getClass, stateTransition)
+          //throw new Exception("Out of order message")
+          same
         }
         case (_, _) =>
-          context.log.debug2("Message {} to block in state {} is unhandled", message.getClass, stateTransition)
+          context.log.info("Message {} to block {} in state {} is unhandled", message, position, stateTransition)
           unhandled
       }
     }

@@ -13,10 +13,14 @@ trait InitializeOperation {
                  filePath: File,
                  state: (File, State, List[Position], StashBuffer[Message]) => Behavior[Message]): Behavior[Message] =
     setup { context =>
-      context.log.debug(s"Initializing aMN at $position")
-      val nextState: Behavior[Message] = if (position.y == 0) {
+      context.log.info(s"Initializing aMN at $position")
+      val nextState: Behavior[Message] = if (position.x == 0) {
+        context.log.info(s"State become L21Applied at $position")
         state(filePath, L21Applied, List.empty[Position], buffer)
-      } else { state(filePath, Initialized, List.empty[Position], buffer) }
+      } else {
+        context.log.info(s"State become Initialized at $position")
+        state(filePath, Initialized, List.empty[Position], buffer)
+      }
 
       if (!buffer.isEmpty) {
         context.log.debug("L21 unstashing")

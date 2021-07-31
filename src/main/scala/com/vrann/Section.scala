@@ -48,7 +48,7 @@ object Section {
       val choleskyRoleBehaviors: Map[Position, BlockBehavior] =
         positions.foldLeft(Map.empty[Position, BlockBehavior])((map, position) => {
           val cholesky = CholeskyRoleBehavior(position, topicsRegistry, sectionId, fileTransferActor).roleBehavior
-          println(s"$position => ${cholesky.topics}")
+          //println(s"$position => ${cholesky.topics}")
           blockTopics ++= cholesky.topics
           blockTopics ++= cholesky.topicsPublishTo
           map + (position -> cholesky)
@@ -91,7 +91,7 @@ object Section {
               .spawn(behavior.apply, "position-" + position)
             behavior.topics.foreach({
               case (topicName, _) => {
-                context.log.debug(s"Subscribe $topicName => $positionActor")
+                context.log.info(s"Subscribe $topicName => $position actor")
                 topicsRegistry(topicName) ! Subscribe(positionActor)
               }
             })
@@ -118,7 +118,7 @@ object Section {
           val choleskyRoleBehaviors: Map[Position, BlockBehavior] =
             positions.foldLeft(Map.empty[Position, BlockBehavior])((map, position) => {
               val cholesky = CholeskyRoleBehavior(position, topicsRegistry, sectionId, fileTransferActor).roleBehavior
-              println(s"$position => ${cholesky.topics}")
+              //println(s"$position => ${cholesky.topics}")
               newBlockTopics ++= cholesky.topics
               map + (position -> cholesky)
             })
@@ -138,7 +138,7 @@ object Section {
 
           messages.foreach(message => {
             if (!message.position.equals(Position(0, 0))) {
-              context.log.debug(s"Publishing init message $message")
+              context.log.info(s"Publishing init message $message")
               topicsRegistry("matrix-aMN-ready", message.position) ! Publish(message)
             }
           })
@@ -150,7 +150,7 @@ object Section {
           val message =
             DataReady(pos, aMN, FileLocator.getFileLocator(pos, aMN, sectionId), sectionId, fileTransferActor)
           topicsRegistry("matrix-aMN-ready", pos) ! Publish(message)
-          context.log.debug(s"Start ${System.currentTimeMillis()}")
+          context.log.info(s"Start ${System.currentTimeMillis()}")
           same
         case _ @InitData(position, blockMatrixType, sectionId, filePath) =>
           if (positions.contains(position)) {

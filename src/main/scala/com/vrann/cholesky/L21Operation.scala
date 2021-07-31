@@ -3,7 +3,7 @@ package com.vrann.cholesky
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.pubsub.Topic.Publish
 import akka.actor.typed.scaladsl.Behaviors.setup
-import akka.actor.typed.scaladsl.StashBuffer
+import akka.actor.typed.scaladsl.{ActorContext, StashBuffer}
 import com.github.fommil.netlib.BLAS
 import com.typesafe.config.ConfigFactory
 import com.vrann.BlockMessage.DataReady
@@ -25,7 +25,7 @@ trait L21Operation {
                sectionId: Int,
                fileTransferActor: ActorRef[Message]): Behavior[Message] =
     setup { context =>
-      context.log.debug(s"L21 from ${message.pos} applied at $position, file ${message.filePath}")
+      context.log.info(s"L21 from ${message.pos} applied at $position, file ${message.filePath}")
       val newProcessed = processedL21 :+ message.pos
 
       val l21 = MatrixReader.readMatrix(new DataInputStream(new FileInputStream(message.filePath)))
@@ -38,12 +38,13 @@ trait L21Operation {
       writer.writeMatrix(A22)
 
       if (newProcessed.size == expectedL21) {
+        context.log.info(s"Processed all L21s for $position: $newProcessed")
         if (position.x == position.y) {
           context.log.debug(s"Factorize next $position")
           factorize(position, newProcessed, buffer, filePath, topicsRegistry, state, sectionId, fileTransferActor)
         } else {
-          context.log.debug(s"Unstash all, L11")
-          buffer.unstashAll(state(filePath, L21Applied, processedL21, buffer))
+          context.log.info(s"Unstash all, L11 at $position")
+          buffer.unstashAll(state(filePath, L21Applied, newProcessed, buffer))
         }
       } else {
         state(filePath, SomeL21Applied, newProcessed, buffer)
@@ -63,23 +64,25 @@ trait L21Operation {
       val sectionId = config.getInt("section")
       val file = FileLocator.getFileLocator(position, L11, sectionId)
       context.log.debug(s"Factorized matrix located at ${file.getAbsolutePath}")
-      processA11(filePath, file)
-      context.log.debug(s"Factorized $position")
+      processA11(filePath, file, context)
+      context.log.info(s"Factorized $position")
       if (topicsRegistry.hasTopic(s"matrix-L11-ready-$position")) {
-        context.log.debug(s"Publishing matrix-L11-ready-$position")
+        context.log.info(s"Publishing matrix-L11-ready-$position")
         topicsRegistry(s"matrix-L11-ready-$position") ! Publish(
           DataReady(position, L11, file.getAbsoluteFile, sectionId, fileTransferActor))
-        context.log.debug(s"Done $position ${System.currentTimeMillis()}")
+        context.log.info(s"Done $position ${System.currentTimeMillis()}")
       } else {
         context.log.debug(s"subscriber is not found for matrix-L11-ready-$position")
-        context.log.debug(s"Process is Done after $position factorized")
+        context.log.info(s"Process is Done after $position factorized")
       }
       state(filePath, Done, processedL21, buffer)
     }
 
-  private def processA11(filePath: File, filePathOut: File) = {
+  private def processA11(filePath: File, filePathOut: File, context: ActorContext[Message]) = {
     val a11 = MatrixReader.readMatrix(new DataInputStream(new FileInputStream(filePath)))
     val l11 = Factorization.apply(a11)
+    context.log.debug(s"L11: ${filePathOut}")
+    context.log.debug(s"L11: ${l11.numCols} ${l11.numRows} $l11")
     val writer = UnformattedMatrixWriter.ofFile(filePathOut)
     writer.writeMatrix(l11)
   }

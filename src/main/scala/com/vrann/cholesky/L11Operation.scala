@@ -24,6 +24,8 @@ trait L11Operation {
                fileTransferActor: ActorRef[Message]): Behavior[Message] = setup { context =>
     context.log.debug(s"L11 from ${message.pos} applied at $position")
     val l11 = MatrixReader.readMatrix(new DataInputStream(new FileInputStream(message.filePath)))
+    context.log.debug(s"L11 filepath: ${message.filePath} \n L11: ${l11.numCols} ${l11.numRows} ${l11}")
+
     val a21 = MatrixReader.readMatrix(new DataInputStream(new FileInputStream(filePath)))
     val filePathOut = FileLocator.getFileLocator(position, L21, sectionId)
     context.log.debug(s"Writing to {}", filePathOut.getAbsolutePath)
@@ -35,6 +37,7 @@ trait L11Operation {
     val messageBody = DataReady(position, L21, filePathOut.getAbsoluteFile, sectionId, fileTransferActor)
     context.log.debug(s"Publishing {}", message)
     topicsRegistry(s"matrix-${L21}-ready-$position") ! Publish(messageBody)
+    context.log.info(s"Done $position ${System.currentTimeMillis()}")
     state(filePath, Done, processedL21, buffer)
   }
 
