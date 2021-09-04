@@ -1,10 +1,11 @@
 package com.vrann
 
 import akka.actor.typed._
-import akka.actor.typed.pubsub.Topic
+import akka.actor.typed.receptionist.Receptionist.{Listing, Register, Subscribe}
+import akka.actor.typed.receptionist.ServiceKey
 import akka.actor.typed.scaladsl.ActorContext
 import akka.actor.typed.scaladsl.Behaviors._
-import akka.cluster.typed.{Cluster, ClusterSingleton}
+import akka.cluster.typed.{Cluster, ClusterSingleton, SingletonActor}
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import akka.http.scaladsl.model.StatusCodes.OK
 import akka.http.scaladsl.model.headers.`Access-Control-Allow-Origin`
@@ -14,8 +15,8 @@ import akka.management.cluster.bootstrap.ClusterBootstrap
 import akka.management.scaladsl.AkkaManagement
 import akka.util.Timeout
 import com.typesafe.config._
-import com.vrann.cholesky.{FileLocator, L11Operation}
-import com.vrann.positioned.PositionMatrix
+import com.vrann.cholesky.L11Operation
+import com.vrann.positioned.{PositionAssignment, PositionCommand, PositionMatrix}
 import org.apache.spark.ml.linalg.DenseMatrix
 import spray.json.{RootJsonFormat, _}
 
@@ -31,7 +32,7 @@ class Mock extends L11Operation {}
 
 object RootBehavior {
 
-  def behavior: Behavior[Message] = setup[Message] { context: ActorContext[Message] =>
+  def behavior: Behavior[Listing] = setup[Listing] { context: ActorContext[Listing] =>
     val cluster = Cluster(context.system)
     val singletonManager = ClusterSingleton(context.system)
     implicit val system = context.system
@@ -49,43 +50,52 @@ object RootBehavior {
       Array[Double](4.0, 11.0, -9.5, -3.0, -53.0, 66.0, 13.666666666666666, 117.33333333333333, -135.0))
     val L21 = m.L11toL21(L11, A21)
 
-//      val positionAssignment: ActorRef[ClusterDomainEvent] = singletonManager.init(
-//        SingletonActor(
-//          supervise(PositionAssignment
-//            .apply(100, 100))
-//            .onFailure[Exception](SupervisorStrategy.resume),
-//          "PositionAssignment"))
-
-    val sectionId = config.getInt("section")
+    val selfMember = Cluster(context.system).selfMember
     val matrixSize = config.getInt("matrixSize")
 
-    val file = FileLocator.getFileLocator(sectionId)("section.conf")
-    val sectionConfig: Config =
-      ConfigFactory.parseFile(file, ConfigParseOptions.defaults.setSyntax(ConfigSyntax.CONF))
-
-    var positions = List[Position]()
-    val keys = sectionConfig
-      .getConfigList("actors.matrix-blocks")
-      .iterator()
-      .forEachRemaining(a => positions = positions :+ Position(a.getInt("x"), a.getInt("y")))
-    var topicRegistry = new TopicsRegistry[Message]
-
-    var startPos = List.empty[Position]
-    for (x <- 0 to matrixSize) {
-      for (y <- 0 to x) {
-        startPos = startPos :+ Position(y, x)
-      }
+    val key = ServiceKey[PositionCommand]("position-assignment")
+    if (selfMember.hasRole("leader")) {
+      val positionAssignment: ActorRef[PositionCommand] = singletonManager.init(
+        SingletonActor(
+          supervise(PositionAssignment
+            .apply(matrixSize, matrixSize))
+            .onFailure[Exception](SupervisorStrategy.resume),
+          "PositionAssignment"))
+      system.receptionist ! Register(key, positionAssignment)
     }
 
-    startPos.foreach(pos => {
-      val topicName = topicRegistry.getTopicName("matrix-aMN-ready", pos)
-      if (!topicRegistry.hasTopic("matrix-aMN-ready", pos)) {
-        topicRegistry = topicRegistry + (topicName, context.spawn(Topic[Message](topicName), topicName))
-      }
-    })
+    system.receptionist ! Subscribe(key, context.self)
 
-    val sectionActor =
-      context.spawn(Section(cluster.selfMember.uniqueAddress.toString, positions, topicRegistry).behavior, "Section")
+//    val positionAssignmentTopic: ActorRef[Topic.Command[PositionCommand]] =
+//      context.spawn(Topic[PositionCommand]("position-assignment"), "position-assignment")
+//    positionAssignmentTopic ! Subscribe(positionAssignment)
+
+    val sectionId = config.getInt("section")
+
+//    val file = FileLocator.getFileLocator(sectionId)("section.conf")
+//    val sectionConfig: Config =
+//      ConfigFactory.parseFile(file, ConfigParseOptions.defaults.setSyntax(ConfigSyntax.CONF))
+
+//    var positions = List[Position]()
+//    val keys = sectionConfig
+//      .getConfigList("actors.matrix-blocks")
+//      .iterator()
+//      .forEachRemaining(a => positions = positions :+ Position(a.getInt("x"), a.getInt("y")))
+//    var topicRegistry = new TopicsRegistry[Message]
+
+//    var startPos = List.empty[Position]
+//    for (x <- 0 to matrixSize) {
+//      for (y <- 0 to x) {
+//        startPos = startPos :+ Position(y, x)
+//      }
+//    }
+
+//    startPos.foreach(pos => {
+//      val topicName = topicRegistry.getTopicName("matrix-aMN-ready", pos)
+//      if (!topicRegistry.hasTopic("matrix-aMN-ready", pos)) {
+//        topicRegistry = topicRegistry + (topicName, context.spawn(Topic[Message](topicName), topicName))
+//      }
+//    })
 
 //    val startPos = List(
 //      Position(0, 0),
@@ -110,19 +120,6 @@ object RootBehavior {
 //      Position(5, 4),
 //      Position(5, 5))
 
-    context
-      .spawn(
-        HttpServer("0.0.0.0", port.getInt("port"), new Routes(sectionActor, startPos).route, context.system),
-        "http")
-
-    class Routes(sectionActor: ActorRef[Message], startPos: List[Position])(implicit
-                                                                            scheduler: Scheduler)
-        extends Directives
-        with JsonSupport {
-      val route: Route =
-        concat(new InitRoute(sectionActor, positions).route, new BlockMatrixService( /*positionAssignment*/ ).route)
-    }
-
 //    singletonManager.init(
 //      SingletonActor(
 //        supervise(
@@ -134,9 +131,28 @@ object RootBehavior {
 //          .onFailure[Exception](SupervisorStrategy.resume),
 //        "HttpServer"))
 
-    receiveMessage[Message] {
+    class Routes(sectionActor: ActorRef[Message])(implicit
+                                                  scheduler: Scheduler)
+        extends Directives
+        with JsonSupport {
+      val route: Route =
+        concat(new InitRoute(sectionActor).route, new BlockMatrixService( /*positionAssignment*/ ).route)
+    }
+
+    receiveMessage[Listing] {
       case message =>
-        sectionActor ! message
+        context.log.info(s"$message")
+        val positionAssignment = message.serviceInstances(key)
+        if (positionAssignment.nonEmpty) {
+          val assignmentActor = positionAssignment.head
+          val sectionActor =
+            context.spawn(Section(sectionId, assignmentActor).behavior, "Section")
+
+          context
+            .spawn(HttpServer("0.0.0.0", port.getInt("port"), new Routes(sectionActor).route, context.system), "http")
+        }
+//positions, topicRegistry, positionAssignmentTopic
+
         same
     }
   }
@@ -161,10 +177,10 @@ trait JsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
   implicit val positionFormat: RootJsonFormat[Position] = jsonFormat2(Position)
 }
 
-class InitRoute(sectionActor: ActorRef[Message], positions: List[Position]) extends Directives with JsonSupport {
+class InitRoute(sectionActor: ActorRef[Message]) extends Directives with JsonSupport {
   val route: Route = concat(path("api" / "v1" / "init") {
 
-    sectionActor ! Init(positions)
+    sectionActor ! InitAll
 
     complete(OK, List(`Access-Control-Allow-Origin`.`*`), "OK")
   }, path("api" / "v1" / "start") {
@@ -173,7 +189,7 @@ class InitRoute(sectionActor: ActorRef[Message], positions: List[Position]) exte
   })
 }
 
-class BlockMatrixService( /*positionAssignment: ActorRef[ClusterDomainEvent]*/ )(
+class BlockMatrixService( /*positionAssignment: ActorRef[Response]*/ )(
   implicit
   scheduler: Scheduler)
     extends Directives
@@ -185,12 +201,12 @@ class BlockMatrixService( /*positionAssignment: ActorRef[ClusterDomainEvent]*/ )
       path("api" / "v1" / "sections") { //requestContext =>
         val positionMatrix = PositionMatrix(100, 100, List(1, 2, 3, 4, 5))
         complete(OK, List(`Access-Control-Allow-Origin`.`*`), positionMatrix.sections)
-        /*val assignment: Future[Response] =
-          positionAssignment.ask(GetCurrentAssignment(_))
-        onComplete(assignment) {
-          case Success(value) => complete(OK, List(`Access-Control-Allow-Origin`.`*`), value.positionMatrix)
-          case Failure(ex)    => complete(InternalServerError, s"An error occurred: ${ex.getMessage}")
-        }*/
+//        val assignment: Future[Response] =
+//          positionAssignment.ask(GetCurrentAssignment(_))
+//        onComplete(assignment) {
+//          case Success(value) => complete(OK, List(`Access-Control-Allow-Origin`.`*`), value.positionMatrix)
+//          case Failure(ex)    => complete(InternalServerError, s"An error occurred: ${ex.getMessage}")
+//        }
       },
       pathSingleSlash {
         getFromResource("static/dist/index.html", ContentTypes.`text/html(UTF-8)`)

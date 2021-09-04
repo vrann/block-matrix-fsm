@@ -33,9 +33,9 @@ class PositionMatrix(M: Int, N: Int, sectionIds: List[Int]) {
           case Some(b) => b
         }
 
-        val endColumnElement = if (isLastRow) sectionsSize * 2 else sectionsSize
+        val endColumnElement = if (isLastRow) sectionsSize * 1 else sectionsSize
         for (k <- 0 until endColumnElement) {
-          val endRowElement = if (isLastRow) sectionsSize * 2 - k else sectionsSize
+          val endRowElement = if (isLastRow) sectionsSize * 1 - k else sectionsSize
 
           for (l <- 0 until endRowElement) {
             sectionPositions :+= Position(x + l, y + k + l)

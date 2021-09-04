@@ -3,7 +3,7 @@ package com.vrann.cholesky
 import akka.actor.typed.pubsub.Topic
 import akka.actor.typed.pubsub.Topic.Command
 import akka.actor.typed.scaladsl.Behaviors._
-import akka.actor.typed.scaladsl.{LoggerOps, StashBuffer}
+import akka.actor.typed.scaladsl.StashBuffer
 import akka.actor.typed.{ActorRef, Behavior}
 import com.vrann.BlockMessage.DataReady
 import com.vrann._
@@ -12,9 +12,10 @@ import com.vrann.cholesky.CholeskyBlockMatrixType.{aMN, L11, L21}
 import java.io.File
 
 class BlockDiagonal(position: Position,
-                    topicsRegistry: TopicsRegistry[Message],
+                    //topicsRegistry: TopicsRegistry[Message],
                     sectionId: Int,
-                    fileTransferActor: ActorRef[Message])
+                    fileTransferActor: ActorRef[Message],
+                    section: ActorRef[Message])
     extends BlockBehavior
     with L21Operation
     with InitializeOperation {
@@ -101,13 +102,13 @@ class BlockDiagonal(position: Position,
         case (Uninitialized, message @ DataReady(pos, blockMatrixType, filePath, sectionId, ref))
             if blockMatrixType.equals(aMN) && pos.equals(position) =>
           if (sectionId != this.sectionId) {
-            context.log.debug(s"Remote data $message")
-            ref ! FileTransferRequestMessage(pos, blockMatrixType, fileTransferActor)
+            //context.log.info(s"Remote data $message")
+            fileTransferActor ! FileTransferRequestDelegateMessage(pos, blockMatrixType, ref)
             same
           } else {
             if (pos.equals(Position(0, 0))) {
               context.log.info("0-0 Done")
-              factorize(position, processedL21, buffer, filePath, topicsRegistry, state, sectionId, ref)
+              factorize(position, processedL21, buffer, filePath, section, state, sectionId, ref)
             } else {
               initialize(position, buffer, filePath, state)
             }
@@ -143,8 +144,8 @@ class BlockDiagonal(position: Position,
         case (Initialized, message @ DataReady(pos, blockMatrixType, _, sectionId, ref))
             if blockMatrixType.equals(L21) && matrixInterested(L21).contains(pos) =>
           if (sectionId != this.sectionId) {
-            context.log.debug(s"Remote data $message")
-            ref ! FileTransferRequestMessage(pos, blockMatrixType, fileTransferActor)
+            //context.log.debug(s"Remote data $message")
+            fileTransferActor ! FileTransferRequestDelegateMessage(pos, blockMatrixType, ref)
             same
           } else {
             applyL21(
@@ -154,7 +155,7 @@ class BlockDiagonal(position: Position,
               processedL21,
               buffer,
               file,
-              topicsRegistry,
+              section,
               state,
               sectionId,
               fileTransferActor)
@@ -167,8 +168,8 @@ class BlockDiagonal(position: Position,
         case (SomeL21Applied, message @ DataReady(pos, blockMatrixType, _, sectionId, ref))
             if blockMatrixType.equals(L21) && matrixInterested(L21).contains(pos) =>
           if (sectionId != this.sectionId) {
-            context.log.debug(s"Remote data $message")
-            ref ! FileTransferRequestMessage(pos, blockMatrixType, fileTransferActor)
+            //context.log.debug(s"Remote data $message")
+            fileTransferActor ! FileTransferRequestDelegateMessage(pos, blockMatrixType, ref)
             same
           } else {
             applyL21(
@@ -178,14 +179,14 @@ class BlockDiagonal(position: Position,
               processedL21,
               buffer,
               file,
-              topicsRegistry,
+              section,
               state,
               sectionId,
               fileTransferActor)
           }
 
         case (Done, _) => {
-          context.log.info2("Out of order message {}, {}", message.getClass, stateTransition)
+          //context.log.info2("Out of order message {}, {}", message.getClass, stateTransition)
           //throw new Exception("Out of order message")
           same
         }

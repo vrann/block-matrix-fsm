@@ -1,14 +1,13 @@
 package com.vrann.cholesky
 
-import akka.actor.typed.{ActorRef, Behavior}
-import akka.actor.typed.pubsub.Topic.Publish
 import akka.actor.typed.scaladsl.Behaviors.setup
 import akka.actor.typed.scaladsl.{ActorContext, StashBuffer}
+import akka.actor.typed.{ActorRef, Behavior}
 import com.github.fommil.netlib.BLAS
 import com.typesafe.config.ConfigFactory
-import com.vrann.BlockMessage.DataReady
-import com.vrann.{Done, L21Applied, Message, Position, SomeL21Applied, State, TopicsRegistry, UnformattedMatrixWriter}
+import com.vrann.BlockMessage.{DataReady, Delegate}
 import com.vrann.cholesky.CholeskyBlockMatrixType.{aMN, L11}
+import com.vrann._
 import org.apache.spark.ml.linalg.DenseMatrix
 
 import java.io.{DataInputStream, File, FileInputStream}
@@ -20,7 +19,7 @@ trait L21Operation {
                processedL21: List[Position],
                buffer: StashBuffer[Message],
                filePath: File,
-               topicsRegistry: TopicsRegistry[Message],
+               section: ActorRef[Message],
                state: (File, State, List[Position], StashBuffer[Message]) => Behavior[Message],
                sectionId: Int,
                fileTransferActor: ActorRef[Message]): Behavior[Message] =
@@ -41,7 +40,7 @@ trait L21Operation {
         context.log.info(s"Processed all L21s for $position: $newProcessed")
         if (position.x == position.y) {
           context.log.debug(s"Factorize next $position")
-          factorize(position, newProcessed, buffer, filePath, topicsRegistry, state, sectionId, fileTransferActor)
+          factorize(position, newProcessed, buffer, filePath, section, state, sectionId, fileTransferActor)
         } else {
           context.log.info(s"Unstash all, L11 at $position")
           buffer.unstashAll(state(filePath, L21Applied, newProcessed, buffer))
@@ -55,7 +54,7 @@ trait L21Operation {
                 processedL21: List[Position],
                 buffer: StashBuffer[Message],
                 filePath: File,
-                topicsRegistry: TopicsRegistry[Message],
+                section: ActorRef[Message],
                 state: (File, State, List[Position], StashBuffer[Message]) => Behavior[Message],
                 sectionId: Int,
                 fileTransferActor: ActorRef[Message]): Behavior[Message] =
@@ -66,15 +65,15 @@ trait L21Operation {
       context.log.debug(s"Factorized matrix located at ${file.getAbsolutePath}")
       processA11(filePath, file, context)
       context.log.info(s"Factorized $position")
-      if (topicsRegistry.hasTopic(s"matrix-L11-ready-$position")) {
-        context.log.info(s"Publishing matrix-L11-ready-$position")
-        topicsRegistry(s"matrix-L11-ready-$position") ! Publish(
-          DataReady(position, L11, file.getAbsoluteFile, sectionId, fileTransferActor))
-        context.log.info(s"Done $position ${System.currentTimeMillis()}")
-      } else {
-        context.log.debug(s"subscriber is not found for matrix-L11-ready-$position")
-        context.log.info(s"Process is Done after $position factorized")
-      }
+      //if (topicsRegistry.hasTopic(s"matrix-L11-ready-$position")) {
+      context.log.info(s"Publishing matrix-L11-ready-$position")
+      section !
+        Delegate(position, L11, DataReady(position, L11, file.getAbsoluteFile, sectionId, fileTransferActor))
+      context.log.info(s"Done! $position ${System.currentTimeMillis()}")
+//      } else {
+//        context.log.debug(s"subscriber is not found for matrix-L11-ready-$position")
+//        context.log.info(s"Process is Done after $position factorized")
+//      }
       state(filePath, Done, processedL21, buffer)
     }
 

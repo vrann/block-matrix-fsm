@@ -1,8 +1,8 @@
 #!/bin/bash
 #java -jar -Xms8G -Xmx16G -Dconfig.file=application.local.conf actormatrix-assembly-0.0.1.jar > log.log
-i=1
-SEED_IP="172.30.1.16"
-SEED_EXTERNAL_IP="54.204.74.79"
+i=0
+SEED_IP="172.30.1.23"
+SEED_EXTERNAL_IP="184.72.189.117"
 scp -i ~/Projects/aws-nvirgin.cer target/scala-2.12/actormatrix-assembly-0.0.1.jar ubuntu@$SEED_EXTERNAL_IP:/home/ubuntu/actormatrix-assembly-0.0.1.jar
 for ip in $(cat cluster-ips.txt )
 do
@@ -30,6 +30,7 @@ akka {
       serialization-bindings {
         "com.vrann.Message" = jackson-json
         "com.vrann.BlockMatrixType" = jackson-json
+        "com.vrann.positioned.PositionCommand" = jackson-json
       }
 
       provider = cluster

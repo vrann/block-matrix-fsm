@@ -1,13 +1,12 @@
 package com.vrann.cholesky
 
-import akka.actor.typed.pubsub.Topic.Publish
 import akka.actor.typed.scaladsl.Behaviors.setup
 import akka.actor.typed.scaladsl.StashBuffer
 import akka.actor.typed.{ActorRef, Behavior}
 import com.github.fommil.netlib.BLAS
-import com.vrann.BlockMessage.DataReady
-import com.vrann.cholesky.CholeskyBlockMatrixType.L21
+import com.vrann.BlockMessage.{DataReady, Delegate}
 import com.vrann._
+import com.vrann.cholesky.CholeskyBlockMatrixType.L21
 import org.apache.spark.ml.linalg.DenseMatrix
 
 import java.io.{DataInputStream, File, FileInputStream}
@@ -18,7 +17,7 @@ trait L11Operation {
                processedL21: List[Position],
                buffer: StashBuffer[Message],
                filePath: File,
-               topicsRegistry: TopicsRegistry[Message],
+               section: ActorRef[Message],
                state: (File, State, List[Position], StashBuffer[Message]) => Behavior[Message],
                sectionId: Int,
                fileTransferActor: ActorRef[Message]): Behavior[Message] = setup { context =>
@@ -36,7 +35,7 @@ trait L11Operation {
     writer.writeMatrix(l21)
     val messageBody = DataReady(position, L21, filePathOut.getAbsoluteFile, sectionId, fileTransferActor)
     context.log.debug(s"Publishing {}", message)
-    topicsRegistry(s"matrix-${L21}-ready-$position") ! Publish(messageBody)
+    section ! Delegate(position, L21, messageBody)
     context.log.info(s"Done $position ${System.currentTimeMillis()}")
     state(filePath, Done, processedL21, buffer)
   }

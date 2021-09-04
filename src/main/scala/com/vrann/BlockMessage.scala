@@ -19,6 +19,10 @@ object BlockMessage extends Message {
                              sectionId: Int,
                              fileTransferActor: ActorRef[Message])
       extends BlockMessage(pos = pos)
+  final case class Delegate(pos: Position, blockMatrixType: BlockMatrixType, message: DataReady)
+      extends BlockMessage(pos = pos)
+  final case class RemoteDelegate(pos: Position, blockMatrixType: BlockMatrixType, message: DataReady)
+      extends BlockMessage(pos = pos)
 
   final case class AllL21Applied(pos: Position) extends BlockMessage(pos = pos)
 

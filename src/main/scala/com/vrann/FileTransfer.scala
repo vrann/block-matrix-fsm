@@ -1,7 +1,6 @@
 package com.vrann
 
 import akka.actor.typed.pubsub.Topic
-import akka.actor.typed.pubsub.Topic.{Command, Publish}
 import akka.actor.typed.scaladsl.Behaviors.same
 import akka.actor.typed.scaladsl.{ActorContext, Behaviors, LoggerOps}
 import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
@@ -11,7 +10,7 @@ import akka.util.{ByteString, Timeout}
 import com.fasterxml.jackson.core.JsonParser
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import com.fasterxml.jackson.databind.{DeserializationContext, JsonDeserializer}
-import com.vrann.BlockMessage.DataReady
+import com.vrann.BlockMessage.{DataReady, Delegate}
 import com.vrann.cholesky.CholeskyBlockMatrixType._
 import com.vrann.cholesky.FileLocator
 
@@ -30,6 +29,10 @@ final case class FileTransferReadyMessage(position: Position,
 final case class FileTransferRequestMessage(position: Position,
                                             matrixType: BlockMatrixType,
                                             ref: ActorRef[FileTransferMessage])
+    extends FileTransferMessage
+final case class FileTransferRequestDelegateMessage(position: Position,
+                                                    matrixType: BlockMatrixType,
+                                                    ref: ActorRef[FileTransferMessage])
     extends FileTransferMessage
 final case class FileTransferResponseMessage(position: Position,
                                              matrixType: BlockMatrixType,
@@ -61,35 +64,38 @@ trait BlockMatrixType { val jsonValue: String }
 
 object FileTransferTopicRegistry extends TopicsRegistry[FileTransferMessage]
 
-case class FileTransfer(positions: List[Position],
-                        positionsRemove: List[Position],
-                        topicsRegistry: TopicsRegistry[Message],
+case class FileTransfer( //positions: List[Position],
+                        //positionsRemove: List[Position],
+                        //topicsRegistry: TopicsRegistry[Message],
+                        section: ActorRef[Message],
                         sectionId: Int) {
 
-  private val topicPatterns = List("data-ready")
+//  private val topicPatterns = List("data-ready")
 
-  val topics: Map[String, Behavior[Command[Message]]] = {
-    this.positions.foldLeft(Map.empty[String, Behavior[Command[Message]]])((map, position) => {
-      var positionTopics = Map.empty[String, Behavior[Command[Message]]]
-      topicPatterns.foreach(topicPattern => {
-        val topicName = s"$topicPattern-$position"
-        positionTopics = positionTopics + (topicName -> Topic[Message](topicName))
-      })
-      map ++ positionTopics
-    })
+//  val topics: Map[String, Behavior[Command[Message]]] = {
+//    this.positions.foldLeft(Map.empty[String, Behavior[Command[Message]]])((map, position) => {
+//      var positionTopics = Map.empty[String, Behavior[Command[Message]]]
+//      topicPatterns.foreach(topicPattern => {
+//        val topicName = s"$topicPattern-$position"
+//        positionTopics = positionTopics + (topicName -> Topic[Message](topicName))
+//      })
+//      map ++ positionTopics
+//    })
+//
+//    //proceed with removal
+//  }
+//  positionsRemove.foldLeft(Map.empty[String, Behavior[Command[Message]]])((map, position) => {
+//    var positionTopics = Map.empty[String, Behavior[Command[Message]]]
+//    topicPatterns.foreach(topicPattern => {
+//      val topicName = s"$topicPattern-$position"
+//      positionTopics = positionTopics + (topicName -> Topic[Message](topicName))
+//    })
+//    map ++ positionTopics
+//  })
 
-    //proceed with removal
-  }
-  positionsRemove.foldLeft(Map.empty[String, Behavior[Command[Message]]])((map, position) => {
-    var positionTopics = Map.empty[String, Behavior[Command[Message]]]
-    topicPatterns.foreach(topicPattern => {
-      val topicName = s"$topicPattern-$position"
-      positionTopics = positionTopics + (topicName -> Topic[Message](topicName))
-    })
-    map ++ positionTopics
-  })
+  def apply: Behavior[Message] = state(List.empty)
 
-  def apply: Behavior[Message] = Behaviors.receivePartial[Message] {
+  def state(requested: List[(Position, BlockMatrixType)]): Behavior[Message] = Behaviors.receivePartial[Message] {
     case (context, FileTransferReadyMessage(position, matrixType, sectionId, fileName, ref)) =>
       context.log
         .debug(
@@ -100,10 +106,22 @@ case class FileTransfer(positions: List[Position],
         context.log.debug(s"FileTransferRequestMessage: $position, $matrixType")
         ref ! fileTransferRequest
       } else {
-        topicsRegistry(s"matrix-$matrixType-ready-$position") ! Publish(
-          DataReady(position, matrixType, FileLocator.getFileLocator(sectionId)(fileName), sectionId, context.self))
+        section !
+          Delegate(
+            position,
+            matrixType,
+            DataReady(position, matrixType, FileLocator.getFileLocator(sectionId)(fileName), sectionId, context.self))
       }
       same
+    case (context, FileTransferRequestDelegateMessage(position, matrixType, remoteRef)) => {
+      if (requested.contains((position, matrixType))) {
+        same
+      } else {
+        val newRequested = requested :+ (position, matrixType)
+        remoteRef ! FileTransferRequestMessage(position, matrixType, context.self)
+        state(newRequested)
+      }
+    }
     case (context, FileTransferRequestMessage(position, matrixType, ref)) =>
       val filePath: Path = Paths.get(FileLocator.getFileLocator(position, matrixType, sectionId).getAbsolutePath)
       context.log.debug(s"Received request for file $filePath in ${context.self}")
@@ -146,8 +164,8 @@ case class FileTransfer(positions: List[Position],
           "Sending messages to local actors {} {}",
           s"matrix-${matrixType}-section${sectionId}-ready-$position",
           DataReady(position, matrixType, filePath.toFile, sectionId, context.self))
-        topicsRegistry(s"matrix-${matrixType}-section${sectionId}-ready-$position") ! Publish(
-          DataReady(position, matrixType, filePath.toFile, sectionId, context.self))
+        section !
+          Delegate(position, matrixType, DataReady(position, matrixType, filePath.toFile, sectionId, context.self))
         same
 
       }
